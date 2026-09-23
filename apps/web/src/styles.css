@@ -39,7 +39,14 @@ h1, h2, .brand { font-family: Fraunces, Georgia, serif; }
 .stat { display: flex; justify-content: space-between; margin: 8px 0; font-size: 14px; }
 .stat b { color: var(--gold); }
 
-.cards { display: grid; gap: 8px; }
+.cards { display: grid; gap: 8px; max-height: 58vh; overflow: auto; padding-right: 4px; }
+.era {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-top: 8px;
+}
 .card-btn {
   text-align: left;
   background: #1c2233;
@@ -52,6 +59,7 @@ h1, h2, .brand { font-family: Fraunces, Georgia, serif; }
 .card-btn[data-on="1"] { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
 .card-btn small { display: block; color: #9aa; font-size: 11px; }
 .card-btn .cost { color: var(--gold); float: right; font-size: 12px; }
+.card-btn.locked { opacity: 0.45; cursor: default; }
 
 .board-wrap {
   background: #0e121c;
@@ -107,8 +115,10 @@ body.dragging .card-btn { cursor: grabbing; }
   font-size: 10px;
   font-weight: 600;
   color: #0c0f16;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
 }
+.piece.lifting { opacity: 0.45; cursor: grabbing; }
 .piece[data-type="bank"] { background: #e8c547; }
 .piece[data-type="exchange"] { background: #c45c3e; color: #fff; }
 .piece[data-type="fund"] { background: #3d8c5c; color: #fff; }
@@ -136,6 +146,79 @@ button.claim:disabled { opacity: 0.4; cursor: default; }
 .frags { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 13px; }
 .frags div { background: #1c2233; padding: 6px 8px; border-radius: 6px; }
 .note { font-size: 11px; color: #8a8678; margin-top: 12px; line-height: 1.4; }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 10, 16, 0.62);
+  z-index: 20;
+}
+.modal-card {
+  position: fixed;
+  z-index: 21;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(380px, calc(100vw - 32px));
+  background: var(--navy);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px 16px 18px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.45);
+}
+.modal-x {
+  position: absolute;
+  right: 10px;
+  top: 8px;
+  background: none;
+  border: 0;
+  color: var(--cream);
+  font-size: 22px;
+  cursor: pointer;
+}
+.modal-art {
+  height: 120px;
+  border-radius: 10px;
+  border: 2px solid #1a140c;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 12px;
+  font-family: Fraunces, Georgia, serif;
+  font-size: 28px;
+  margin-bottom: 12px;
+}
+.modal-art small { font-family: "IBM Plex Sans", sans-serif; font-size: 12px; opacity: 0.85; }
+.modal-art[data-type="bank"] { background: #e8c547; color: #0c0f16; }
+.modal-art[data-type="exchange"] { background: #c45c3e; color: #fff; }
+.modal-art[data-type="fund"] { background: #3d8c5c; color: #fff; }
+.modal-art[data-type="vault"] { background: #6b4c9a; color: #fff; }
+.modal-art[data-type="brokerage"] { background: #3a6ea5; color: #fff; }
+.modal-art[data-type="research"] { background: #d9d2c0; color: #0c0f16; }
+.modal-card h2 { margin: 0 0 6px; font-size: 22px; }
+.modal-desc { color: #c9c3b0; font-size: 13px; line-height: 1.45; margin: 0 0 12px; }
+.modal-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.modal-stats div {
+  background: #1c2233;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.modal-stats span { display: block; font-size: 11px; color: #9aa; }
+.modal-stats b { color: var(--gold); }
+.lvl-row { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.lvl {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: #8a8678;
+}
+.lvl.on { border-color: var(--gold); color: var(--gold); }
 
 @media (max-width: 960px) {
   #app { grid-template-columns: 1fr; }

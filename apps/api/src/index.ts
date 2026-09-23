@@ -4,14 +4,12 @@ import { cors } from "hono/cors";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import {
+  BUILDING_LIST,
   CARDS,
-  CARD_ORDER,
-  FRAGMENTS,
   FRAGMENT_UNITS,
   HUNTS,
   STARTER_CASH_MINOR,
   SETTLE_MS,
-  type CardId,
   type HuntId,
   type PlacedCard,
   displayCash,
@@ -20,8 +18,10 @@ import {
   fragmentForHunt,
   hasFund,
   huntRewardMul,
+  isUnlocked,
   pickHunt,
   resolveMystery,
+  resolveType,
   tickMinor,
   upgradeCostMinor,
   utcDay,
@@ -52,7 +52,7 @@ async function loadCards(playerId: string): Promise<PlacedCard[]> {
   const rows = await db.select().from(cards).where(eq(cards.playerId, playerId));
   return rows.map((r) => ({
     id: r.id,
-    type: r.type as CardId,
+    type: resolveType(r.type),
     x: r.x,
     y: r.y,
     stage: r.stage as 1 | 2 | 3,
@@ -146,7 +146,10 @@ async function snapshot(playerId: string) {
     weeklyScore: p.weeklyScore,
     weeklyRedeemable: false,
     cards: p.board,
-    catalog: CARD_ORDER.map((id) => CARDS[id]),
+    catalog: BUILDING_LIST.map((spec) => ({
+      ...spec,
+      unlocked: isUnlocked(spec.id, p.board),
+    })),
     fragments: map,
     hunt: {
       ...hunt,
@@ -214,8 +217,13 @@ app.get("/api/plot", async (c) => {
   return c.json(snap);
 });
 
+function isTrade(type: string): boolean {
+  const lin = CARDS[resolveType(type)]?.lineage;
+  return lin === "trade" || lin === "exchange";
+}
+
 const Place = z.object({
-  type: z.enum(["bank", "exchange", "fund", "vault", "brokerage", "research"]),
+  type: z.string(),
   x: z.number().int().min(0).max(11),
   y: z.number().int().min(0).max(11),
 });
@@ -226,24 +234,28 @@ app.post("/api/plot/place", async (c) => {
   const p = await settlePlayer(id);
   if (!p) return c.json({ error: "no plot" }, 404);
   const body = Place.parse(await c.req.json());
-  const spec = CARDS[body.type];
+  const spec = CARDS[resolveType(body.type)];
+  if (!spec) return c.json({ error: "Unknown building" }, 400);
+  if (!isUnlocked(spec.id, p.board)) {
+    return c.json({ error: "Locked. Grow the previous building in this line to stage 2." }, 400);
+  }
   if (p.cashMinor < spec.placeCostMinor) {
     return c.json({ error: "Not enough Cash" }, 400);
   }
-  if (!fits(p.board, body.type, body.x, body.y)) {
+  if (!fits(p.board, spec.id, body.x, body.y)) {
     return c.json({ error: "Does not fit" }, 400);
   }
   const cardId = newId();
   await db.insert(cards).values({
     id: cardId,
     playerId: id,
-    type: body.type,
+    type: spec.id,
     x: body.x,
     y: body.y,
     stage: 1,
   });
   let exchange = p.exchangeActionsToday;
-  if (body.type === "exchange") exchange += 1;
+  if (isTrade(spec.id)) exchange += 1;
   await db
     .update(players)
     .set({
@@ -251,6 +263,27 @@ app.post("/api/plot/place", async (c) => {
       exchangeActionsToday: exchange,
     })
     .where(eq(players.id, id));
+  return c.json(await snapshot(id));
+});
+
+const Move = z.object({
+  cardId: z.string(),
+  x: z.number().int().min(0).max(11),
+  y: z.number().int().min(0).max(11),
+});
+
+app.post("/api/plot/move", async (c) => {
+  const id = c.req.header("x-player-id");
+  if (!id) return c.json({ error: "x-player-id required" }, 401);
+  const p = await settlePlayer(id);
+  if (!p) return c.json({ error: "no plot" }, 404);
+  const body = Move.parse(await c.req.json());
+  const card = p.board.find((x) => x.id === body.cardId);
+  if (!card) return c.json({ error: "missing card" }, 404);
+  if (!fits(p.board, card.type, body.x, body.y, card.id)) {
+    return c.json({ error: "Does not fit" }, 400);
+  }
+  await db.update(cards).set({ x: body.x, y: body.y }).where(eq(cards.id, body.cardId));
   return c.json(await snapshot(id));
 });
 
@@ -272,7 +305,7 @@ app.post("/api/plot/upgrade", async (c) => {
     .set({ stage: card.stage + 1 })
     .where(eq(cards.id, cardId));
   let exchange = p.exchangeActionsToday;
-  if (card.type === "exchange") exchange += 1;
+  if (isTrade(card.type)) exchange += 1;
   await db
     .update(players)
     .set({ cashMinor: p.cashMinor - cost, exchangeActionsToday: exchange })
