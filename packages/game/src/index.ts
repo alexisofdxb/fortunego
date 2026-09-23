@@ -75,15 +75,37 @@ export function upgradeCostMinor(type: string, from: 1 | 2): number {
   return from === 1 ? Math.round(base * 1.2) : Math.round(base * 1.8);
 }
 
+export function plotRank(cards: { type: string }[]): number {
+  const er: Record<string, number> = {
+    humble: 0,
+    starter: 0,
+    growing: 1,
+    established: 2,
+    elite: 3,
+    tycoon: 4,
+  };
+  let r = 0;
+  for (const c of cards) {
+    const s = CARDS[resolveType(c.type)];
+    if (s) r = Math.max(r, er[s.era] ?? 0);
+  }
+  return r;
+}
+
+export function boardSize(rank: number): number {
+  return 12 + Math.min(4, Math.max(0, rank)) * 4;
+}
+
 export function fits(
   cards: PlacedCard[],
   type: string,
   x: number,
   y: number,
   ignoreId?: string,
+  n = BOARD,
 ): boolean {
   const [w, h] = specOf(type).footprint;
-  if (x < 0 || y < 0 || x + w > BOARD || y + h > BOARD) return false;
+  if (x < 0 || y < 0 || x + w > n || y + h > n) return false;
   for (const c of cards) {
     if (c.id === ignoreId) continue;
     const [cw, ch] = specOf(c.type).footprint;
@@ -93,8 +115,8 @@ export function fits(
   return true;
 }
 
-export function occupancy(cards: PlacedCard[]): boolean[][] {
-  const g = Array.from({ length: BOARD }, () => Array(BOARD).fill(false));
+export function occupancy(cards: PlacedCard[], n = BOARD): boolean[][] {
+  const g = Array.from({ length: n }, () => Array(n).fill(false));
   for (const c of cards) {
     const [w, h] = specOf(c.type).footprint;
     for (let dy = 0; dy < h; dy++) {

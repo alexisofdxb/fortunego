@@ -31,7 +31,7 @@ h1, h2, .brand { font-family: Fraunces, Georgia, serif; }
   margin: 0 auto;
   padding: 0;
   overflow: hidden;
-  background: url("/bg-plot.png") center / cover no-repeat;
+  background: #7ed957 url("/largemap.png") center / cover no-repeat;
 }
 
 .brand { font-size: 22px; margin: 0; letter-spacing: 0.04em; }
@@ -164,7 +164,7 @@ h1, h2, .brand { font-family: Fraunces, Georgia, serif; }
   inset: 0;
   z-index: 0;
   overflow: hidden;
-  background: transparent;
+  background: #08160c;
   border: 0;
   border-radius: 0;
   padding: 0;
@@ -174,19 +174,54 @@ h1, h2, .brand { font-family: Fraunces, Georgia, serif; }
 }
 body.panning .board-wrap, .board-wrap:active { cursor: grabbing; }
 
+#world {
+  position: absolute;
+  inset: 0;
+}
+#land {
+  position: absolute;
+  inset: 0;
+  background: url("/largemap.png") center / cover no-repeat;
+  transform-origin: center center;
+  will-change: transform;
+}
 .grid {
   position: absolute;
-  left: 0;
-  top: 0;
-  background-color: var(--cream);
-  background-image:
-    linear-gradient(to right, #2c2418 1px, transparent 1px),
-    linear-gradient(to bottom, #2c2418 1px, transparent 1px);
-  background-size: 96px 96px;
-  background-position: 0 0;
-  border: 2px solid #1a140c;
-  overflow: visible;
+  transform-origin: 0 0;
   will-change: transform;
+  background-color: transparent;
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      rgba(40, 48, 28, 0.72) 0 2px,
+      transparent 2px var(--cell, 48px)
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      rgba(40, 48, 28, 0.72) 0 2px,
+      transparent 2px var(--cell, 48px)
+    );
+  border: 2px dashed rgba(42, 52, 30, 0.8);
+  overflow: visible;
+}
+.zoom-fab {
+  position: absolute;
+  right: 10px;
+  bottom: 150px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.zoom-fab button {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: rgba(20, 24, 36, 0.88);
+  color: var(--cream);
+  font-size: 20px;
+  cursor: pointer;
 }
 body.dragging { cursor: grabbing; user-select: none; }
 body.dragging .play-card { cursor: grabbing; }

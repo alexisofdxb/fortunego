@@ -8,6 +8,8 @@ import {
   cardHourMinor,
   fits,
   lineageColor,
+  plotRank,
+  boardSize,
   upgradeCostMinor,
   type Era,
   type PlacedCard,
@@ -57,17 +59,39 @@ type Drag =
   | { kind: "move"; id: string; type: string; startX: number; startY: number; moved: boolean };
 let drag: Drag | null = null;
 let ghost: { x: number; y: number; ok: boolean } | null = null;
-let world = BOARD * 96;
+const LAND_W = 1672;
+const LAND_H = 941;
+let boardN = 12;
+let lastRank = -1;
 let panX = 0;
 let panY = 0;
+let zoom = 1;
 let pan: { lastX: number; lastY: number; startX: number; startY: number; pieceId: string | null; moved: boolean } | null =
   null;
 let didCenter = false;
 let longPress: ReturnType<typeof setTimeout> | null = null;
+const pointers = new Map<number, { x: number; y: number }>();
+let pinch = 0;
 
-function applyPan() {
+function applyCam() {
+  const land = document.querySelector<HTMLElement>("#land");
   const grid = document.querySelector<HTMLElement>("#grid");
-  if (grid) grid.style.transform = `translate(${panX}px, ${panY}px)`;
+  if (land) land.style.transform = `scale(${zoom})`;
+  if (grid) grid.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+}
+
+function zoomAt(cx: number, cy: number, factor: number) {
+  const view = document.querySelector<HTMLElement>("#board-view");
+  if (!view) return;
+  const r = view.getBoundingClientRect();
+  const x = cx - r.left;
+  const y = cy - r.top;
+  const wx = (x - panX) / zoom;
+  const wy = (y - panY) / zoom;
+  zoom = Math.min(3.2, Math.max(0.55, zoom * factor));
+  panX = x - wx * zoom;
+  panY = y - wy * zoom;
+  applyCam();
 }
 
 function layoutWorld() {
@@ -75,17 +99,21 @@ function layoutWorld() {
   const grid = document.querySelector<HTMLElement>("#grid");
   if (!view || !grid) return;
   const r = view.getBoundingClientRect();
-  const cell = Math.max(r.width, r.height) / BOARD;
-  world = cell * BOARD;
-  grid.style.width = `${world}px`;
-  grid.style.height = `${world}px`;
-  grid.style.backgroundSize = `${cell}px ${cell}px`;
+  boardN = 12;
+  const side = Math.min(r.width, r.height) * 0.58;
+  const cell = side / boardN;
+  grid.style.width = `${side}px`;
+  grid.style.height = `${side}px`;
+  grid.style.left = `${(r.width - side) / 2}px`;
+  grid.style.top = `${(r.height - side) / 2}px`;
+  grid.style.setProperty("--cell", `${cell}px`);
   if (!didCenter) {
-    panX = (r.width - world) / 2;
-    panY = (r.height - world) / 2;
+    panX = 0;
+    panY = 0;
+    zoom = 1;
     didCenter = true;
   }
-  applyPan();
+  applyCam();
 }
 
 async function api(path: string, init?: RequestInit) {
@@ -112,13 +140,13 @@ function cellAt(clientX: number, clientY: number): { x: number; y: number } | nu
   const r = grid.getBoundingClientRect();
   if (r.width <= 0 || r.height <= 0) return null;
   if (clientX < r.left || clientY < r.top || clientX >= r.right || clientY >= r.bottom) return null;
-  const x = Math.min(BOARD - 1, Math.max(0, Math.floor(((clientX - r.left) / r.width) * BOARD)));
-  const y = Math.min(BOARD - 1, Math.max(0, Math.floor(((clientY - r.top) / r.height) * BOARD)));
+  const x = Math.min(boardN - 1, Math.max(0, Math.floor(((clientX - r.left) / r.width) * boardN)));
+  const y = Math.min(boardN - 1, Math.max(0, Math.floor(((clientY - r.top) / r.height) * boardN)));
   return { x, y };
 }
 
 function tileStyle(x: number, y: number, w: number, h: number): string {
-  return `left:${(x / BOARD) * 100}%;top:${(y / BOARD) * 100}%;width:${(w / BOARD) * 100}%;height:${(h / BOARD) * 100}%;`;
+  return `left:${(x / boardN) * 100}%;top:${(y / boardN) * 100}%;width:${(w / boardN) * 100}%;height:${(h / boardN) * 100}%;`;
 }
 
 function ignoreId(): string | undefined {
@@ -156,6 +184,14 @@ function bindOnce() {
     const t = e.target as HTMLElement;
     if (t.closest(".modal-card")) return;
     if (t.closest(".modal-backdrop")) return;
+    if (t.closest(".zoom-fab")) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      pinch = Math.hypot(a.x - b.x, a.y - b.y);
+      pan = null;
+      return;
+    }
     const catalog = t.closest<HTMLElement>("[data-drag-type]");
     const piece = t.closest<HTMLElement>(".piece");
     if (catalog) {
@@ -165,7 +201,7 @@ function bindOnce() {
       document.body.classList.add("dragging");
       inspectId = null;
       const at = cellAt(e.clientX, e.clientY);
-      ghost = at ? { ...at, ok: fits(plot.cards, type, at.x, at.y) } : null;
+      ghost = at ? { ...at, ok: fits(plot.cards, type, at.x, at.y, undefined, boardN) } : null;
       paintGhost();
       e.preventDefault();
       return;
@@ -203,6 +239,16 @@ function bindOnce() {
     }
   });
   app.addEventListener("pointermove", (e) => {
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2 && pinch) {
+      const [a, b] = [...pointers.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2;
+      zoomAt(midX, midY, d / pinch);
+      pinch = d;
+      return;
+    }
     if (pan && !drag) {
       const dist = Math.hypot(e.clientX - pan.startX, e.clientY - pan.startY);
       if (dist > 10) {
@@ -216,7 +262,7 @@ function bindOnce() {
       panY += e.clientY - pan.lastY;
       pan.lastX = e.clientX;
       pan.lastY = e.clientY;
-      applyPan();
+      applyCam();
       return;
     }
     if (!drag || !plot) return;
@@ -233,11 +279,13 @@ function bindOnce() {
     }
     ghost = {
       ...at,
-      ok: fits(plot.cards, drag.type, at.x, at.y, ignoreId()),
+      ok: fits(plot.cards, drag.type, at.x, at.y, ignoreId(), boardN),
     };
     paintGhost();
   });
   app.addEventListener("pointerup", (e) => {
+    pointers.delete(e.pointerId);
+    pinch = 0;
     if (longPress) {
       clearTimeout(longPress);
       longPress = null;
@@ -248,7 +296,6 @@ function bindOnce() {
       if (!drag && !hold.moved && hold.pieceId) {
         inspectId = hold.pieceId;
         render();
-        layoutWorld();
         return;
       }
       if (!drag) return;
@@ -272,7 +319,9 @@ function bindOnce() {
     }
     if (at) void moveCard(current.id, at.x, at.y);
   });
-  app.addEventListener("pointercancel", () => {
+  app.addEventListener("pointercancel", (e) => {
+    pointers.delete(e.pointerId);
+    pinch = 0;
     pan = null;
     drag = null;
     ghost = null;
@@ -294,7 +343,23 @@ function bindOnce() {
     }
     const claim = t.closest<HTMLButtonElement>("button.claim");
     if (claim && !claim.disabled && !claim.dataset.upgrade) void claimHunt();
+    const zb = t.closest<HTMLElement>("[data-zoom]");
+    if (zb?.dataset.zoom) {
+      const view = document.querySelector<HTMLElement>("#board-view");
+      if (!view) return;
+      const r = view.getBoundingClientRect();
+      zoomAt(r.left + r.width / 2, r.top + r.height / 2, zb.dataset.zoom === "in" ? 1.18 : 0.85);
+    }
   });
+  app.addEventListener(
+    "wheel",
+    (e) => {
+      if (!(e.target as HTMLElement).closest("#board-view")) return;
+      e.preventDefault();
+      zoomAt(e.clientX, e.clientY, e.deltaY > 0 ? 0.92 : 1.09);
+    },
+    { passive: false },
+  );
 }
 
 function modalHtml(): string {
@@ -386,9 +451,17 @@ function render() {
     </div>
     <p class="toast strip-toast">${toast}</p>
     <main class="board-wrap" id="board-view">
-      <div class="grid" id="grid" style="transform:translate(${panX}px, ${panY}px)">
-        <div class="ghost" id="ghost" hidden></div>
-        ${pieces}
+      <div id="world">
+        <div id="land">
+          <div class="grid" id="grid">
+            <div class="ghost" id="ghost" hidden></div>
+            ${pieces}
+          </div>
+        </div>
+      </div>
+      <div class="zoom-fab">
+        <button type="button" data-zoom="in">+</button>
+        <button type="button" data-zoom="out">−</button>
       </div>
     </main>
     <p class="place-hint" id="place-hint">Drag a card onto the board</p>
@@ -412,6 +485,7 @@ function render() {
     </section>
     ${modalHtml()}
   `;
+  requestAnimationFrame(() => layoutWorld());
 }
 
 async function place(type: string, x: number, y: number) {
@@ -476,7 +550,6 @@ async function boot() {
   localStorage.setItem(KEY, playerId);
   plot = data.plot;
   render();
-  requestAnimationFrame(() => layoutWorld());
   window.addEventListener("resize", () => layoutWorld());
   setInterval(async () => {
     if (drag) return;

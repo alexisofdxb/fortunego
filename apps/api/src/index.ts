@@ -20,6 +20,8 @@ import {
   huntRewardMul,
   isUnlocked,
   pickHunt,
+  plotRank,
+  boardSize,
   resolveMystery,
   resolveType,
   tickMinor,
@@ -242,7 +244,7 @@ app.post("/api/plot/place", async (c) => {
   if (p.cashMinor < spec.placeCostMinor) {
     return c.json({ error: "Not enough Cash" }, 400);
   }
-  if (!fits(p.board, spec.id, body.x, body.y)) {
+  if (!fits(p.board, spec.id, body.x, body.y, undefined, 12)) {
     return c.json({ error: "Does not fit" }, 400);
   }
   const cardId = newId();
@@ -280,7 +282,7 @@ app.post("/api/plot/move", async (c) => {
   const body = Move.parse(await c.req.json());
   const card = p.board.find((x) => x.id === body.cardId);
   if (!card) return c.json({ error: "missing card" }, 404);
-  if (!fits(p.board, card.type, body.x, body.y, card.id)) {
+  if (!fits(p.board, card.type, body.x, body.y, card.id, 12)) {
     return c.json({ error: "Does not fit" }, 400);
   }
   await db.update(cards).set({ x: body.x, y: body.y }).where(eq(cards.id, body.cardId));
