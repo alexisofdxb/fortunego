@@ -1,0 +1,17 @@
+{
+  "name": "@plotgo/web",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5173",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@plotgo/game": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "vite": "^7.1.5"
+  }
+}

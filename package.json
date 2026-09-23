@@ -1,0 +1,20 @@
+{
+  "name": "plotgo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Founder Plot — 12×12 financial board. Place cards, earn Cash, hunt stock fragments.",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @plotgo/api --filter @plotgo/web dev",
+    "dev:api": "pnpm --filter @plotgo/api dev",
+    "dev:web": "pnpm --filter @plotgo/web dev",
+    "build": "pnpm -r build",
+    "db:push": "pnpm --filter @plotgo/api db:push"
+  },
+  "packageManager": "pnpm@10.17.0",
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3", "esbuild"]
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
