@@ -30,8 +30,8 @@ export type CardSpec = {
   customersBase: number;
   blurb: string;
   description: string;
-  /** Previous building in this institution's life. */
-  requires: string | null;
+  /** Previous building in this institution's progression line; informational only and never an unlock gate. */
+  progressionFrom: string | null;
 };
 
 const C = CASH_SCALE;
@@ -47,7 +47,7 @@ function b(
   customers: number,
   blurb: string,
   description: string,
-  requires: string | null,
+  progressionFrom: string | null,
 ): CardSpec {
   return {
     id,
@@ -60,15 +60,15 @@ function b(
     customersBase: customers,
     blurb,
     description,
-    requires,
+    progressionFrom,
   };
 }
 
 export const BUILDING_LIST: CardSpec[] = [
-  b("cash_kiosk", "Cash Kiosk", "humble", "bank", [1, 1], 80, 6, 40, "A stool and a cash box.", "The smallest way to take money in. One window, one line.", null),
-  b("trading_booth", "Trading Booth", "humble", "trade", [1, 1], 90, 7, 25, "A folding table for tickets.", "Hand-written tickets. Volume is tiny. The start of a pit.", null),
-  b("savings_stand", "Savings Stand", "humble", "bank", [1, 1], 70, 5, 35, "A jar with a ledger.", "Neighbors drop coins. You write names in a book.", null),
-  b("mini_brokerage", "Mini Brokerage Desk", "humble", "broker", [1, 2], 120, 8, 20, "One desk, two chairs.", "You take a few retail orders and keep a paper blotter.", null),
+  b("cash_kiosk", "Cash Kiosk", "humble", "bank", [1, 1], 300, 6, 40, "A stool and a cash box.", "The smallest way to take money in. One window, one line.", null),
+  b("trading_booth", "Trading Booth", "humble", "trade", [1, 1], 370, 7, 25, "A folding table for tickets.", "Hand-written tickets. Volume is tiny. The start of a pit.", null),
+  b("savings_stand", "Savings Stand", "humble", "bank", [1, 1], 460, 5, 35, "A jar with a ledger.", "Neighbors drop coins. You write names in a book.", null),
+  b("mini_brokerage", "Mini Brokerage Desk", "humble", "broker", [1, 2], 560, 8, 20, "One desk, two chairs.", "You take a few retail orders and keep a paper blotter.", null),
   b("market_info", "Market Info Kiosk", "humble", "research", [1, 1], 60, 4, 18, "Prices on a chalkboard.", "A board of last prices. People stop, look, walk on.", null),
   b("micro_loan", "Micro Loan Booth", "humble", "lend", [1, 1], 85, 7, 22, "Small loans, cash in hand.", "Tiny loans, daily collection. High touch, small book.", null),
   b("fx_stand", "Currency Exchange Stand", "humble", "trade", [1, 2], 110, 8, 28, "A spread on the street.", "You buy and sell cash at a window. The spread is the living.", null),
@@ -124,6 +124,10 @@ export const BUILDING_LIST: CardSpec[] = [
 
 export const CARDS: Record<string, CardSpec> = Object.fromEntries(BUILDING_LIST.map((x) => [x.id, x]));
 export const CARD_ORDER = BUILDING_LIST.map((x) => x.id);
+/** Canonical Building Card unlock level: one catalog entry per Empire Level. */
+export const CARD_UNLOCK_LEVEL: Record<string, number> = Object.fromEntries(
+  CARD_ORDER.map((id, index) => [id, index + 1]),
+);
 
 export const LEGACY_TYPE: Record<string, string> = {
   bank: "community_bank",
@@ -149,19 +153,24 @@ export function resolveType(id: string): string {
   return LEGACY_TYPE[id] ?? id;
 }
 
-export function isUnlocked(type: string, placed: { type: string; stage: number }[]): boolean {
+export function buildingUnlockLevel(type: string): number | null {
+  const id = resolveType(type);
+  return CARD_UNLOCK_LEVEL[id] ?? null;
+}
+
+export function isUnlocked(type: string, placed: { type: string; stage: number }[], levelOverride?: number): boolean {
   const spec = CARDS[resolveType(type)];
   if (!spec) return false;
-  if (spec.era === "humble") return true;
-  if (spec.requires) {
-    const prev = placed.find((c) => resolveType(c.type) === spec.requires);
-    return Boolean(prev && prev.stage >= 2);
-  }
-  const rank = ERA_ORDER.indexOf(spec.era);
-  return placed.some((c) => {
-    const s = CARDS[resolveType(c.type)];
-    return s && ERA_ORDER.indexOf(s.era) === rank - 1 && c.stage >= 2;
-  });
+  const unlockLevel = buildingUnlockLevel(spec.id);
+  if (unlockLevel === null) return false;
+  const empireLevel = levelOverride ?? Math.max(
+    1,
+    Math.min(
+      BUILDING_LIST.length,
+      placed.reduce((sum, card) => sum + Math.max(1, Math.floor(card.stage || 1)), 0),
+    ),
+  );
+  return empireLevel >= unlockLevel;
 }
 
 export function lineageColor(lineage: Lineage): string {

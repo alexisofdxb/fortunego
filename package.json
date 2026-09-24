@@ -7,7 +7,9 @@
     "dev": "pnpm --parallel --filter @plotgo/api --filter @plotgo/web dev",
     "dev:api": "pnpm --filter @plotgo/api dev",
     "dev:web": "pnpm --filter @plotgo/web dev",
+    "simulate:performance": "pnpm --filter @plotgo/api exec tsx ../../scripts/simulate_performance.ts",
     "build": "pnpm -r build",
+    "test:balance": "pnpm --filter @plotgo/api exec tsx ../../scripts/balance_regression.ts",
     "db:push": "pnpm --filter @plotgo/api db:push"
   },
   "packageManager": "pnpm@10.17.0",

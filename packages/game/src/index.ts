@@ -1,11 +1,129 @@
 export { BOARD, CASH_SCALE, STARTER_CASH_MINOR, SETTLE_MS } from "./constants.ts";
+export { ONBOARDING_MILESTONES, ONBOARDING_XP_THRESHOLDS, onboardingLevel, onboardingMilestone, onboardingStep, type OnboardingMilestone, type OnboardingStatus } from "./onboarding.ts";
+export {
+  DISTRICT_EVENTS,
+  SESSION_VERBS,
+  eventForDay,
+  seedForDay,
+  type DistrictEvent,
+  type DistrictEventId,
+  type SessionVerb,
+} from "./events.ts";
+export {
+  settleDistrict,
+  type CustomerSegments,
+  type DistrictState,
+  type LedgerLine,
+  type RevenueBreakdown,
+  type RevenueModel,
+  type SettlementResult,
+} from "./settle_phase2.ts";
+export {
+  COLLECTIONS,
+  DIFFICULTY_RULES,
+  MARKET_COLLECTIONS,
+  MARKET_EVENT_RULES,
+  MARKET_HUNTS,
+  MARKET_STAGE_LABEL,
+  MARKET_STAGES,
+  MARKET_STOCKS,
+  REWARD_VALUES_MINOR,
+  STAGE_RULES,
+  STOCKS,
+  chooseRarity,
+  collectionProgress,
+  fragmentUnitsBps,
+  isoWeek,
+  marketStageForRank,
+  marketStageForEmpireLevel,
+  marketStageIndex,
+  marketEventForDay,
+  rewardUnitsMicros,
+  rewardUnitsMicrosAtPrice,
+  collectionBonuses,
+  stockOf,
+  weightedChoice,
+  type CollectionDef,
+  type DifficultyRule,
+  type HuntDifficulty,
+  type MarketCollection,
+  type MarketHuntTemplate,
+  type MarketEventRule,
+  type MarketStage,
+  type MarketStock,
+  type RewardRarity,
+  type StockDef,
+  type StockRarity,
+} from "./stocks.ts";
+export {
+  PERFORMANCE_RULES,
+  PERFORMANCE_RUNTIME_TARGETS,
+  PERFORMANCE_STAGE_RULES,
+  PERFORMANCE_WEIGHTS,
+  DEFAULT_PERFORMANCE_TARGET_MODE,
+  allocateWeeklyPayouts,
+  calculatePerformanceScore,
+  payoutWeight,
+  utilizationIndex,
+  type PerformanceMetrics,
+  type PerformanceScore,
+  type PerformanceTargetMode,
+} from "./performance.ts";
+export {
+  PLACEMENT_BUILDING_COUNT,
+  PLACEMENT_SPECIAL_TILE_COUNTS,
+  PLACEMENT_SYNERGY_RULE_COUNT,
+  buildingFamily,
+  directAdjacent,
+  edgeDistance,
+  fitsPlacement,
+  orientedFootprint,
+  resolvePlacement,
+  specialTileAt,
+  type DistrictBonus,
+  type Orientation,
+  type PlacementCard,
+  type PlacementEffect,
+  type PlacementLink,
+  type PlacementPenalty,
+  type PlacementResolution,
+  type PlacementFamily,
+  type SpecialTileType,
+} from "./placement.ts";
+export {
+  BUILDING_EVENT_SENSITIVITY,
+  EVENT_CATALOG,
+  EVENT_CATALOG_COUNT,
+  EVENT_DECISIONS,
+  EVENT_MISSIONS,
+  EVENT_REWARD_RULES,
+  MARKET_CYCLE_RULES,
+  MARKET_CYCLE_TRANSITIONS,
+  catalogModifier,
+  cycleModifier,
+  cycleRule,
+  eventEligible,
+  stackModifiers,
+  stageIndex,
+  type CatalogEvent,
+  type EventCategory,
+  type EventDecision,
+  type EventMission,
+  type EventModifier,
+  type EventScope,
+  type EventTone,
+  type MarketCycleRule,
+  type MarketCycleState,
+} from "./event_cycle.ts";
 export {
   BUILDING_LIST,
   CARDS,
   CARD_ORDER,
+  CARD_UNLOCK_LEVEL,
   ERA_LABEL,
   ERA_ORDER,
   LEGACY_TYPE,
+  buildingUnlockLevel,
   isUnlocked,
   lineageColor,
   resolveType,
@@ -14,11 +132,55 @@ export {
   type Era,
   type Lineage,
 } from "./buildings.ts";
+export {
+  BUILDING_MODULE_PROFILE_COUNT,
+  EVENT_MODULE_INTERACTIONS,
+  HUNT_MODULE_REWARD_RULES,
+  MODULE_PART_VALUES,
+  MODULE_STAGE_RULES,
+  buildingModuleProfile,
+  canonicalModuleCatalog,
+  eventModuleInteraction,
+  moduleCategoryAllowed,
+  moduleEquippable,
+  moduleBuildingFamily,
+  moduleCompatible,
+  moduleDefinition,
+  moduleLockForEvent,
+  moduleRarityAllowed,
+  moduleRewardLabel,
+  moduleRarityRank,
+  moduleStageAllowed,
+  moduleStageAllowedAtEmpireLevel,
+  moduleSlotsForBuilding,
+  moduleSlotsForRuntimeStage,
+  rollEventModuleReward,
+  rollHuntModuleReward,
+  resolveModuleEffects,
+  runtimeUpgradeLevel,
+  type BuildingModuleProfile,
+  type EventModuleInteraction,
+  type ModuleCategory,
+  type ModuleRarity,
+  type ModuleReward,
+  type ModuleRewardKind,
+  type ModuleEffect,
+  type ModuleEffectType,
+  type ModuleEffectVector,
+  type ModuleRuntimeContext,
+  type ModuleRiskCategory,
+} from "./modules.ts";
+export { CANONICAL_MODULE_CATALOG, type CanonicalModuleCatalogEntry } from "./module_catalog.ts";
+export { OFFLINE_CONFIG, offlineBandAtElapsedHours, offlineStateForAwayMinutes, splitOfflineWindow, type OfflineBand, type OfflineSlice } from "./offline_economy.ts";
+export { EMPIRE_ARCHETYPES, resolveArchetype, type ArchetypeEffects, type ArchetypeResolution, type EmpireArchetype } from "./archetypes.ts";
 
 import { BOARD, CASH_SCALE, SETTLE_MS } from "./constants.ts";
 import { CARDS, resolveType } from "./buildings.ts";
+import { MARKET_HUNTS, type MarketHuntTemplate } from "./market_phase3.ts";
+import { fitsPlacement, orientedFootprint } from "./placement.ts";
+import type { Orientation } from "./placement.ts";
 
-export type HuntId = "exchange_actions" | "upgrade_any" | "cash_target";
+export type HuntId = (typeof MARKET_HUNTS)[number]["id"];
 
 export const FRAGMENTS = [
   "AAPL",
@@ -28,23 +190,11 @@ export const FRAGMENTS = [
   "AMZN",
   "GOOGL",
   "META",
-  "JPM",
-  "GS",
-  "BRK",
+  "COIN",
+  "NFLX",
+  "SPY",
 ] as const;
 export type FragmentTicker = (typeof FRAGMENTS)[number];
-
-export type CardSpec = {
-  id: CardId;
-  name: string;
-  footprint: [number, number];
-  placeCostMinor: number;
-  /** Cash minor per 10s at stage 1. */
-  baseMinorPerTick: number;
-  customersBase: number;
-  blurb: string;
-  description: string;
-};
 
 export const STAGE_LABEL: Record<1 | 2 | 3, string> = {
   1: "Branch",
@@ -58,6 +208,9 @@ export type PlacedCard = {
   x: number;
   y: number;
   stage: 1 | 2 | 3;
+  orientation?: Orientation;
+  placedAt?: number;
+  operationalUntil?: number;
 };
 
 function specOf(type: string) {
@@ -72,6 +225,7 @@ export function stageMul(stage: 1 | 2 | 3): number {
 
 export function upgradeCostMinor(type: string, from: 1 | 2): number {
   const base = specOf(type).placeCostMinor;
+  if (resolveType(type) === "cash_kiosk" && from === 1) return 465 * CASH_SCALE;
   return from === 1 ? Math.round(base * 1.2) : Math.round(base * 1.8);
 }
 
@@ -103,22 +257,15 @@ export function fits(
   y: number,
   ignoreId?: string,
   n = BOARD,
+  orientation: Orientation = 0,
 ): boolean {
-  const [w, h] = specOf(type).footprint;
-  if (x < 0 || y < 0 || x + w > n || y + h > n) return false;
-  for (const c of cards) {
-    if (c.id === ignoreId) continue;
-    const [cw, ch] = specOf(c.type).footprint;
-    const overlap = x < c.x + cw && x + w > c.x && y < c.y + ch && y + h > c.y;
-    if (overlap) return false;
-  }
-  return true;
+  return fitsPlacement(cards, type, x, y, orientation, ignoreId, n);
 }
 
 export function occupancy(cards: PlacedCard[], n = BOARD): boolean[][] {
   const g = Array.from({ length: n }, () => Array(n).fill(false));
   for (const c of cards) {
-    const [w, h] = specOf(c.type).footprint;
+    const [w, h] = orientedFootprint(c.type, c.orientation ?? 0);
     for (let dy = 0; dy < h; dy++) {
       for (let dx = 0; dx < w; dx++) g[c.y + dy][c.x + dx] = true;
     }
@@ -166,36 +313,22 @@ export function hasFund(cards: PlacedCard[]): boolean {
   return cards.some((c) => specOf(c.type).lineage === "fund");
 }
 
-export type HuntDef = {
-  id: HuntId;
-  title: string;
-  hint: string;
-  cashRewardMinor: number;
-};
+export type HuntDef = MarketHuntTemplate & { title: string; hint: string; cashRewardMinor: number };
 
-export const HUNTS: HuntDef[] = [
-  {
-    id: "exchange_actions",
-    title: "Complete 3 Exchange actions",
-    hint: "Place or upgrade a trading or exchange building, three times today.",
-    cashRewardMinor: 400 * CASH_SCALE,
-  },
-  {
-    id: "upgrade_any",
-    title: "Upgrade any building",
-    hint: "Raise any card to the next stage.",
-    cashRewardMinor: 250 * CASH_SCALE,
-  },
-  {
-    id: "cash_target",
-    title: "Generate 100,000 Cash",
-    hint: "Lifetime Cash earned on this Plot, not the wallet balance.",
-    cashRewardMinor: 600 * CASH_SCALE,
-  },
-];
+export const HUNTS: HuntDef[] = MARKET_HUNTS.map((hunt) => ({
+  ...hunt,
+  title: hunt.name,
+  hint: `${hunt.metric}: ${hunt.target.toLocaleString()} ${hunt.unit}.`,
+  cashRewardMinor: 0,
+}));
 
 export function pickHunt(daySeed: number): HuntDef {
   return HUNTS[Math.abs(daySeed) % HUNTS.length]!;
+}
+
+export function empireLevel(cards: { stage?: number }[]): number {
+  const raw = cards.reduce((sum, card) => sum + 1 + Math.max(0, (card.stage ?? 1) - 1), 0);
+  return Math.max(1, Math.min(50, raw));
 }
 
 export function fragmentForHunt(
@@ -206,6 +339,7 @@ export function fragmentForHunt(
   const drop = roll01 < fragmentDropBps(cards) / 10_000;
   if (!drop && hunt !== "exchange_actions") return null;
   if (hunt === "exchange_actions") return "NVDA";
+  if (hunt === "earnings_day") return "AAPL";
   if (hunt === "cash_target") return "AAPL";
   return "MYSTERY";
 }

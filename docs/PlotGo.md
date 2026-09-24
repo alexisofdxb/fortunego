@@ -448,7 +448,7 @@ Capture: buildings that list a given input split that pool by `capacity(level) =
 | Place 3×3 | 20,000 | 200 Cash |
 | Place 4×4 | 60,000 | 600 Cash |
 | Level up | `4,000 * level * footprintTiles` | L1→L2 of a 1×1 is 4,000 minor (40 Cash). L1→L2 of a 2×2 is 16,000 minor (160 Cash). |
-| Starting Cash on first create | 8,000 | 80 Cash. One 1×2 and two 1×1s, or four 1×1s. Not a bank. |
+| Starting Cash on first create | 250,000 | 2,500 Cash. The first five minutes can fund a Cash Kiosk, Trading Booth, and Savings Stand, with the first positive customer-driven Cash delta before the upkeep economy begins. |
 
 These costs live in the spec (`buildCostMinor`) and a single `levelCost` function, not in the page. Phase 1 starting grant is the only Cash that appears from nothing, once per plot, server-side, idempotent on district create.
 
@@ -657,7 +657,7 @@ Verbs (phase 1 has all four; the UI only enables those the board can perform):
 | `rebalance` | a fund, brokerage, or asset manager | overweight cash / growth / value (phase 4: a real weight vector, still scored server-side) | Overweight matches the day's winning bucket. |
 | `underwrite` | a vault or treasury | reserve ratio low / standard / high | Choice matches liquidity pressure. A Liquidity Crisis rewards high. |
 
-If the player has no qualifying building, the only verb is `walk`, multiplier 0.85 on every building, still once per day. Skipping the day does not accrue Cash. There is no offline drip and no mailbox of unclaimed days. Anti-farm: the business earns when the player shows up and makes a decision.
+If the player has no qualifying building, the only verb is `walk`, multiplier 0.85 on every building, still once per day. Active Activity Points and Hunts require a meaningful action, while the canonical Idle / Offline Economy processes signed Cash and customer changes for up to 12 hours at declining efficiency. Anti-farm: offline revenue and growth receive only partial Performance credit, and the economy freezes after the cap.
 
 `settle` is pure:
 
@@ -736,7 +736,7 @@ Phase 6 reads the indexer; it does not fork ownership.
 - **Activation.** My-plots keeps `updateCapacity` / `claim` on `UserPlotRewards`. The board shows activated capacity as a badge ("land rewards on") and never adds to `rewardPerShare`. A plot that is not activated still runs the Cash game. Activation is owner income in ETH, separate from today's Cash.
 - **Family bind.** `FamilyPlotBinder.bindPlot` is still head-and-owner, on-chain. When `plot.familyToken` is set, the city cell shows the family image (the explore map already draws `family.image_uri` for assigned families; phase 6 prefers the indexed binding over the current client-side assignment map). `GET /api/plots/family/:slug` is the lookup. Bound family members with `UserContext.family.role` of head, moderator, or holder may open the board read-only. Only the NFT owner settles, places, and upgrades. A shared treasury of Cash is not in this design; the open question is campus shape, not custody of Cash.
 - **Merge campus.** Recommended default: the merged token id is a campus. Each child plot in `plotTerritory.childPlots` keeps its own 12×12, keyed by the child token id (children are locked in the merger during grace, and burned at finalize — see Open Question 1 for the id stability problem and the default answer). The board switcher lists children by `(x, y)`. Adjacency rules also fire across the shared city edge: a bank on the east edge of plot `(10,20)` and an insurance office on the west edge of `(11,20)` satisfy `bank_insurance`. Interior tiles that do not touch the city edge do not. Splitting the territory (`FamilyPlotMerge.split`) unlinks the campus and leaves each board's buildings on the successor plot.
-- **$PLOT sinks.** No $PLOT token contract exists in this repo. Do not add a mint function on the building path. Once a player holds $PLOT, spending it is what keeps the loop from ending in a sell. Sinks, all user-signed and all transfers of existing tokens: land activation beyond the current reward-contract call, buying another plot, a rare building permit, district expansion, a premium blueprint Cash cannot buy, a marketplace fee, an advanced financial license, entry to a special event. Host path is `sdk.payments.charge` (manifest permission `payments:charge`, idempotency key required by `ChargeInput`) or a wallet `writeContract`, the same pattern as `app/my-plots/my-plots/page.tsx`. Plot TBAs (`FamilyPlotTBA.execute`, owner-signed) remain the place a plot holds an asset if a SKU must sit on the land. The app never requests `trading:agent` or treasury spend. `family.manifest.json` `custody` stays `non-custodial`. `shareBps` 1000 stays and applies only to host charges, not to Cash and not to the epoch pool.
+- **$PLOT sinks.** No $PLOT token contract exists in this repo. Do not add a mint function on the building path. Once a player holds $PLOT, spending it is what keeps the loop from ending in a sell. Sinks, all user-signed and all transfers of existing tokens: land activation beyond the current reward-contract call, buying another plot, a rare building permit, district expansion, a premium cosmetic Module skin Cash cannot buy, a marketplace fee, an advanced financial license, entry to a special event. Host path is `sdk.payments.charge` (manifest permission `payments:charge`, idempotency key required by `ChargeInput`) or a wallet `writeContract`, the same pattern as `app/my-plots/my-plots/page.tsx`. Plot TBAs (`FamilyPlotTBA.execute`, owner-signed) remain the place a plot holds an asset if a SKU must sit on the land. The app never requests `trading:agent` or treasury spend. `family.manifest.json` `custody` stays `non-custodial`. `shareBps` 1000 stays and applies only to host charges, not to Cash and not to the epoch pool.
 
 ### Epoch payouts and Payout Day
 
@@ -776,7 +776,7 @@ dayScore *= reputationBps / 10000
 dayScore *= riskFactor          // 1.00 at low risk, 0.70 at high risk, 0.40 if a bank-run loss fired that day
 ```
 
-A day with no session adds 0. It does not erase earlier days in the epoch. A district left for three months does not accumulate a redeemable pile: no session, no score, and upkeep still runs only on days the player opens the app (no offline accrual, same as daily settlement).
+A day with no session adds 0 Activity and Hunt progress. It does not erase earlier days in the epoch. A district left for three months does not accumulate a redeemable pile: offline Cash and customer simulation are capped at the canonical 12-hour absence window, then freeze until return; offline flow receives reduced Performance credit.
 
 Epoch score is the sum of that week's day scores. Eligible Cash for the epoch is not the whole balance. It is the portion of that week's earned Cash the score qualifies, per category, after weights, and it cannot exceed the Cash the district actually holds:
 
@@ -829,7 +829,7 @@ Distribution of the token is a user-signed transfer from a published epoch distr
 
 ### What the player does in one session
 
-Acquire a city plot (map, once contracts are deployed) → open its board → place a business the starting Cash can afford → come back on a UTC day → read the event → pick a verb → receive Cash from district activity modified by that choice → upgrade or place the next footprint → (later) allocate into a book, survive a crash, visit someone else's exchange, bind a family, link a campus. Once a week, on Payout Day, decide how much eligible Cash to burn for a share of the fixed `$PLOT` pool, then spend that `$PLOT` on a permit, a plot, a blueprint, or a license. Friends, leaderboards, deals, and governance sit on top of that loop. They do not replace it.
+Acquire a city plot (map, once contracts are deployed) → open its board → place a business the starting Cash can afford → come back on a UTC day → read the event → pick a verb → receive Cash from district activity modified by that choice → upgrade or place the next footprint → (later) allocate into a book, survive a crash, visit someone else's exchange, bind a family, link a campus. Once a week, on Payout Day, decide how much eligible Cash to burn for a share of the fixed `$PLOT` pool, then spend that `$PLOT` on a permit, a plot, a cosmetic Module skin, or a license. Friends, leaderboards, deals, and governance sit on top of that loop. They do not replace it.
 
 Core loop: **the plot does not produce money. The businesses on the plot produce Cash because they participate in a simulated financial economy. Eligible Cash can be burned for a share of a fixed weekly `$PLOT` pool.**
 
@@ -1014,7 +1014,7 @@ Each phase is shippable. Flags are listed again under Rollout. "Systems touched"
 ### Phase 1 — First playable
 
 - **Goal.** A sidewalk pays Cash on a server ledger. One event, one verb, three sidewalk adjacency pairs, three visual tiers, six small buildings. No bank, exchange, fund, or vault.
-- **User-visible.** Starting 80 Cash. Place an ATM, a kiosk, a terminal, a money booth, a curb desk, or a lockbox. Once per day: read the event, pick a verb, see a receipt in single-digit or low double-digit Cash. Level and capacity on the card. Boxes grow through branch / regional / tower as level crosses 5 and 10 (level-ups are possible but slow; tiers can be previewed with a dev control). The first bank is not on this screen.
+- **User-visible.** Starting 2,500 Cash. The first five minutes guide the player through a Cash Kiosk, Trading Booth, Savings Stand, a real customer, the first synergy, and a positive customer-driven Cash delta. Once per day: read the event, pick a verb, see a receipt. Level and capacity remain visible on the card. The first bank is not on this screen.
 - **Systems.** `packages/plotgo-core` or `shared/plotgo`, `backend/routes/plotgo.ts`, Prisma migration, `FamilyAppBridge` cache write after ack, build page session panel.
 - **Data.** `plotgo_district`, `plotgo_building`, `plotgo_tile`, `plotgo_ledger`, `plotgo_district_day`, `plotgo_session`. Listed-asset marks exist in the day payload as a stub (constant 0 return) so phase 4 does not change the day schema.
 - **Non-goals.** Risk/reputation UI, employees, research, visits, portfolios the player can edit, $PLOT, a bank, an exchange, a fund, a vault, and the rest of the catalog.
@@ -1033,17 +1033,17 @@ Each phase is shippable. Flags are listed again under Rollout. "Systems touched"
 
 - **Goal.** The full table in this document is placeable under unlock rules. Four empire presets change income, risk, and tint.
 - **User-visible.** Stock exchange and investment bank compete for a 4×4 footprint. Hotels, apartments, offices, a university, a tech campus, and a convention center take smaller tiles and change who lives in the district instead of printing Cash. Archetype picker with the 40% tile rule explained in the UI before the player commits. A mixed board shows "no theme bonus" rather than a silent zero.
-- **Systems.** Registry rows, adjacency rules flipping from inert to active, board tint, a small archetype panel.
-- **Data.** `plotgo_district.archetype`. No new engine.
-- **Non-goals.** Editable portfolios, visits, chain writes.
+- **Systems.** Registry rows, adjacency rules flipping from inert to active, board tint, archetype settlement effects, opposing-tag suppression, and paid seven-day retuning.
+- **Data.** Player archetype fields are persisted in the API; the runtime uses the four documented presets. Environment buildings and the full 4×4 catalog remain future work.
+- **Non-goals.** Visits, chain writes, and the full environment-building set.
 - **Exit.** A trading campus and a banking campus on the same district-day produce different receipts, and a board with every tag active does not beat both.
 
 ### Phase 4 — In-game listed assets
 
 - **Goal.** Fund and brokerage hold weights. Marks move AUM. Sector tags affect AI Mania and theme bonuses.
 - **User-visible.** A rebalance verb that sets weights (must sum to 100%). Next day the receipt shows per-symbol return bps. Sector chip on the building. Copy on every asset says "in-game". No external prices.
-- **Systems.** `plotgo_position`, day-mark generator inside `DistrictDay` payload, portfolio panel on the board.
-- **Data.** Positions. Asset definitions in code, not a table, until phase 7.
+- **Systems.** `plotgo_position`, in-game instrument definitions, allocation/rebalance route, and portfolio panel data are now wired. Day-mark settlement and AUM fee receipts remain the next Phase 4 slice.
+- **Data.** Positions. Asset definitions remain in code, not a table, until phase 7.
 - **Non-goals.** Live feeds, wallet trading, `trading:agent`, real NVDA.
 - **Exit.** Two funds with different weights earn different AUM fees on the same day. Cash weights earn zero mark. Settlement still matches a replay that includes the stored marks.
 
@@ -1059,7 +1059,7 @@ Each phase is shippable. Flags are listed again under Rollout. "Systems touched"
 ### Phase 6 — On-chain join
 
 - **Goal.** The board is gated by NFT ownership. Land rewards stay where they are. Merges surface as a campus of boards. Binding shows the emblem and a read-only family view. Payout Day burns eligible Cash for a share of a fixed `$PLOT` pool. Scarce sinks spend that `$PLOT`. Nothing in the daily sim mints the token.
-- **User-visible.** Non-owners get 403 on place/settle. My-plots shows the existing ETH claim beside a Build button and, separately, Payout Day. The payout screen shows district revenue, eligible Cash, Cash burned, share of Cash burned, the weekly pool, `$PLOT` earned, rank, best business, and best asset. A slider or amount field chooses the burn. Cash not burned stays. A merged estate shows a campus switcher. Family emblem on the city cell comes from the indexed `familyToken`. Sink buttons (permit, blueprint, license, marketplace fee, extra plot, special event) are behind a flag and do nothing unless the token and the SKU are configured.
+- **User-visible.** Non-owners get 403 on place/settle. My-plots shows the existing ETH claim beside a Build button and, separately, Payout Day. The payout screen shows district revenue, eligible Cash, Cash burned, share of Cash burned, the weekly pool, `$PLOT` earned, rank, best business, and best asset. A slider or amount field chooses the burn. Cash not burned stays. A merged estate shows a campus switcher. Family emblem on the city cell comes from the indexed `familyToken`. Sink buttons (permit, cosmetic Module skin, license, marketplace fee, extra plot, special event) are behind a flag and do nothing unless the token and the SKU are configured.
 - **Systems.** `app/page.tsx` selection sheet, `app/my-plots/my-plots/page.tsx` (Realm label included), `family.manifest.json` permissions only when the flag is on, indexer reads already present (`PlotBound` is subscribed in `plot-indexer.ts`), `plotgo_epoch` routes.
 - **Data.** `campus_slot` re-key described above. `plotgo_epoch`, `plotgo_epoch_score`, `plotgo_epoch_claim`. The distributor or merkle root is config, not a new game formula. If a SKU must escrow in the TBA, that is a later contract PR, owner-signed, not part of the Cash ledger.
 - **Non-goals.** A fixed Cash-to-`$PLOT` rate. Minting `$PLOT` from a building tick. Custodial TBA execution. Rewriting merge math. Burning ineligible operating Cash.
@@ -1196,9 +1196,9 @@ Database rollback: migrations are additive. The down path is "stop writing." Dro
 | The sim feels like a farm | High | No claim without a verb. No offline accrual. Receipt shows the inputs. If playtests still describe it as a timer, the verb is too weak and the multiplier band should widen before any new building is added. |
 | One adjacency blob dominates | High | Diminishing pairs, theme bonus that shuts off when enemy tags exceed 40% of tiles, 4×4 opportunity cost, capture splitting so four banks share one deposit pool. Pipeline conversions cap at 15% of the source building. Phase 3 exit test is specifically this. |
 | Environment buildings become the printer | Medium | Direct Cash is 0. Population caps at 4× the opening pool. A hotel still needs a finance building to capture the segment. |
-| $PLOT sell pressure if emissions leak back in | High | Daily `settle` does not mint. The only distribution is `epochPool`, set per week, paid in proportion to Cash burned. Eligible Cash is score-capped per plot. Sinks (permits, plots, blueprints, licenses, fees, events) ship behind the same flag as the first epoch. `UserPlotRewards` untouched. |
+| $PLOT sell pressure if emissions leak back in | High | Daily `settle` does not mint. The only distribution is `epochPool`, set per week, paid in proportion to Cash burned. Eligible Cash is score-capped per plot. Sinks (permits, plots, cosmetic Module skins, licenses, fees, events) ship behind the same flag as the first epoch. `UserPlotRewards` untouched. |
 | Real-ticker optics | High | In-game labels through phase 6. External source default off. Disclosure is a product/legal gate, not a copy tweak in a feature PR. |
-| Empty player economy at low DAU | Medium | Engine 1 is the floor and is fully specified in phase 1. Visits are phase 5 and are allowed to be rare. Leaderboards can rank solo Cash before any visit exists. |
+| Empty player economy at low DAU | Medium | Engine 1 is the floor and is fully specified in phase 1. The canonical offline window preserves limited Cash/customer continuity without granting passive Activity or Hunt progress. Visits are phase 5 and are allowed to be rare. |
 | Art cost of per-level meshes | Medium | Three tiers, box meshes until a type is actually in players' hands. 6 types × 3 tiers is the first art order, not 20 × 20. |
 | `sdk.store` treated as authority by a later PR | High | Cache type has no Cash field. API test loads a forged store payload and asserts the GET balance. |
 | Indexer and ledger disagree on owner | Medium | 60 s RPC fallback. Flag `plotgo.ownership` off until addresses exist. |
@@ -1317,14 +1317,14 @@ Ordered, each mergeable on its own. Later PRs assume the earlier phase's exit cr
 - Description: Data center, market maker, trading floor, asset manager, REIT, stock exchange, investment bank, and the environment set (restaurant, hotel, apartments, office, university, tech campus, convention center). Environment rows are `boost_only` and move segment pools, capped at 4× opening population. Adjacency rules `exchange_mm`, `brokerage_stocks`, `fintech_data`, plus the customer pipeline. Flag `plotgo.catalog`.
 
 **PR 12 — Empire archetypes**
-- Files: `shared/plotgo/archetype.ts`, settle theme bonus, `plotgo_district.archetype`, board picker.
+- Files: `packages/game/src/archetypes.ts`, settlement theme bonus, player archetype fields, API retune route, and board snapshot data.
 - Dependencies: PR 11.
 - Description: Four presets, 40% tile rule, opposing-tag suppression, 7-day retune. Flag `plotgo.archetype`.
 
 ### Phase 4
 
 **PR 13 — In-game portfolios**
-- Files: `shared/plotgo/markets.ts`, `plotgo_position`, allocate route, rebalance verb UI, receipt marks.
+- Files: `plotgo_position`, in-game instrument definitions, positions/rebalance routes, and portfolio snapshot data. Daily marks, AUM fees, and rebalance UI remain.
 - Dependencies: PR 6, PR 11.
 - Description: NVDA / AAPL / TSLA / CASH as in-game instruments. Weights, daily marks from the district seed, AUM updated before fees. Sector tags on AI Mania. Flag `plotgo.stocks`. Copy review for "in-game".
 
@@ -1365,7 +1365,7 @@ Ordered, each mergeable on its own. Later PRs assume the earlier phase's exit cr
 **PR 19b — Scarce $PLOT sinks (dark)**
 - Files: `family.manifest.json` (add `payments:charge` and `user:balance` only in this PR), `FamilyAppBridge` or a small charge helper, ledger note for a verified spend.
 - Dependencies: PR 19.
-- Description: Permits, blueprints, licenses, marketplace fees, extra-plot and special-event SKUs. One SKU end to end on testnet if a token is configured; otherwise the route returns 501. Spending `$PLOT` does not mint it. Flag `plotgo.charge`. Manifest custody unchanged.
+- Description: Permits, cosmetic Module skins, licenses, marketplace fees, extra-plot and special-event SKUs. One SKU end to end on testnet if a token is configured; otherwise the route returns 501. Spending `$PLOT` does not mint it. Flag `plotgo.charge`. Manifest custody unchanged.
 
 ### Phase 7
 

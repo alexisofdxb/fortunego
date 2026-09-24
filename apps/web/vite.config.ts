@@ -1,10 +1,13 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+
+const gameEntry = fileURLToPath(new URL("../../packages/game/src/index.ts", import.meta.url));
 
 export default defineConfig({
   resolve: {
     alias: {
-      "@plotgo/game": path.resolve(__dirname, "../../packages/game/src/index.ts"),
+      "@plotgo/game": path.resolve(gameEntry),
     },
   },
   server: {
