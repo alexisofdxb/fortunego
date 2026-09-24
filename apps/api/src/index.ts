@@ -76,6 +76,7 @@ import {
   buildingUnlockLevel,
   isUnlocked,
   ONBOARDING_MILESTONES,
+  onboardingGuideFor,
   onboardingLevel as onboardingLevelForXp,
   onboardingMilestone,
   onboardingStep as onboardingStepForMilestones,
@@ -377,6 +378,8 @@ function onboardingSnapshot(playerId: string) {
   if (!row) return null;
   const milestones = onboardingMilestoneRows(playerId);
   const achieved = milestones.map((milestone) => milestone.milestoneId);
+  const guide = row.onboardingStatus === "active" ? onboardingGuideFor(row.onboardingStep) ?? null : null;
+  const elapsedMinutes = row.onboardingStartedAt == null ? 0 : Math.max(0, (Date.now() - row.onboardingStartedAt) / 60_000);
   return {
     sessionId: row.onboardingSessionId,
     startedAt: row.onboardingStartedAt,
@@ -387,6 +390,8 @@ function onboardingSnapshot(playerId: string) {
     completedAt: row.onboardingCompletedAt,
     skippedAt: row.onboardingSkippedAt,
     protectionUntil: row.personalEventProtectionUntil,
+    elapsedMinutes: Number(elapsedMinutes.toFixed(2)),
+    guide: guide ? { ...guide, overdue: elapsedMinutes > ((onboardingMilestone(guide.milestoneId)?.targetMinute ?? 0) + 2) } : null,
     milestones: ONBOARDING_MILESTONES.map((milestone) => ({
       ...milestone,
       achievedAt: milestones.find((item) => item.milestoneId === milestone.id)?.achievedAt ?? null,

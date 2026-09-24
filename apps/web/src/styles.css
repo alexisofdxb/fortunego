@@ -447,3 +447,8 @@ button.claim:disabled { opacity: 0.4; cursor: default; }
 .onboarding-progress i { display: block; height: 100%; border-radius: inherit; background: var(--gold); }
 .onboarding-panel p { margin: 0; color: var(--cream); font-weight: 700; }
 .onboarding-panel .performance-claim { width: auto; padding: 6px 10px; }
+.onboarding-panel .secondary { border-color: #536176; background: rgba(83, 97, 118, 0.16); }
+.onboarding-instruction { color: #d6cfbf; font-size: 12px; line-height: 1.35; }
+.onboarding-recovery { color: #f0c46a !important; }
+.onboarding-focus { position: relative; z-index: 12 !important; outline: 2px solid var(--gold) !important; outline-offset: 4px; box-shadow: 0 0 0 6px rgba(237, 194, 92, 0.18), 0 0 28px rgba(237, 194, 92, 0.42) !important; animation: onboarding-pulse 0.8s ease-in-out 3; }
+@keyframes onboarding-pulse { 50% { outline-color: #fff1ae; box-shadow: 0 0 0 10px rgba(237, 194, 92, 0.08), 0 0 34px rgba(237, 194, 92, 0.62) !important; } }

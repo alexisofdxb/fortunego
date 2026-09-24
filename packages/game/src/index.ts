@@ -1,5 +1,5 @@
 export { BOARD, CASH_SCALE, STARTER_CASH_MINOR, SETTLE_MS } from "./constants.ts";
-export { ONBOARDING_MILESTONES, ONBOARDING_XP_THRESHOLDS, onboardingLevel, onboardingMilestone, onboardingStep, type OnboardingMilestone, type OnboardingStatus } from "./onboarding.ts";
+export { ONBOARDING_GUIDE, ONBOARDING_MILESTONES, ONBOARDING_XP_THRESHOLDS, onboardingGuideFor, onboardingLevel, onboardingMilestone, onboardingStep, type OnboardingGuide, type OnboardingMilestone, type OnboardingStatus } from "./onboarding.ts";
 export {
   DISTRICT_EVENTS,
   SESSION_VERBS,

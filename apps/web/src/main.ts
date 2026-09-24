@@ -108,6 +108,8 @@ type Plot = {
     completedAt: number | null;
     skippedAt: number | null;
     protectionUntil: number;
+    elapsedMinutes: number;
+    guide: { milestoneId: string; title: string; prompt: string; actionLabel: string; target: string; recovery: string; overdue: boolean } | null;
     milestones: { id: string; targetMinute: number; xp: number; label: string; required: boolean; achievedAt: number | null }[];
     achieved: string[];
   } | null;
@@ -311,6 +313,20 @@ async function api(path: string, init?: RequestInit) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? res.statusText);
   return data;
+}
+
+function focusOnboardingTarget(target?: string) {
+  if (!target) return;
+  document.querySelectorAll<HTMLElement>(".onboarding-focus").forEach((element) => element.classList.remove("onboarding-focus"));
+  const element = document.querySelector<HTMLElement>(`[data-onboarding-target="${target}"]`);
+  if (!element) {
+    toast = "That tutorial step is waiting for the previous action to finish.";
+    render();
+    return;
+  }
+  element.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+  element.classList.add("onboarding-focus");
+  window.setTimeout(() => element.classList.remove("onboarding-focus"), 2_400);
 }
 
 function cashLabel(minor: number) {
@@ -537,6 +553,11 @@ function bindOnce() {
       void skipOnboarding();
       return;
     }
+    const onboardingAction = t.closest<HTMLButtonElement>("button[data-onboarding-action]");
+    if (onboardingAction) {
+      focusOnboardingTarget(onboardingAction.dataset.onboardingAction);
+      return;
+    }
     const rebalance = t.closest<HTMLButtonElement>("button[data-rebalance]");
     if (rebalance && !rebalance.disabled) {
       void rebalancePortfolio();
@@ -670,7 +691,7 @@ function render() {
     .map((c) => {
       const [w, h] = orientedFootprint(c.type, c.orientation ?? 0);
       const spec = CARDS[c.type];
-      return `<button class="piece stage-${c.stage}" type="button" data-type="${lineageColor(spec.lineage)}" data-stage="${c.stage}" data-id="${c.id}"
+      return `<button class="piece stage-${c.stage}" type="button" data-type="${lineageColor(spec.lineage)}" data-stage="${c.stage}" data-id="${c.id}" ${c.type === "cash_kiosk" ? 'data-onboarding-target="building-cash-kiosk"' : ""}
         style="${tileStyle(c.x, c.y, w, h)}">
         <span>${spec.name}</span><span>S${c.stage}</span>
       </button>`;
@@ -697,8 +718,9 @@ function render() {
   const onboardingNext = onboarding?.milestones.find((milestone) => milestone.id === onboarding.step) ?? null;
   const onboardingRequired = onboarding?.milestones.filter((milestone) => milestone.required) ?? [];
   const onboardingComplete = onboardingRequired.filter((milestone) => milestone.achievedAt != null).length;
+  const guide = onboarding?.guide;
   const onboardingHtml = onboarding && onboarding.status === "active"
-    ? `<section class="onboarding-panel"><div class="portfolio-heading"><b>First 5 minutes</b><span>Lv${onboarding.level} · ${onboardingComplete}/${onboardingRequired.length} milestones</span></div><div class="onboarding-progress"><i style="width:${Math.round((onboardingComplete / Math.max(1, onboardingRequired.length)) * 100)}%"></i></div><p>${onboardingNext ? onboardingNext.label : "Your core empire loop is live."}</p><small class="settled">Build → Customers → Cash → Placement → Hunts → Portfolio → Performance. This guide ends before 30 minutes.</small><button class="performance-claim" type="button" data-onboarding-skip>Skip guided onboarding</button></section>`
+    ? `<section class="onboarding-panel"><div class="portfolio-heading"><b>Guided onboarding</b><span>First 5 minutes · Lv${onboarding.level} · ${onboardingComplete}/${onboardingRequired.length}</span></div><div class="onboarding-progress"><i style="width:${Math.round((onboardingComplete / Math.max(1, onboardingRequired.length)) * 100)}%"></i></div><p>${guide?.title ?? onboardingNext?.label ?? "Your core empire loop is live."}</p><div class="onboarding-instruction">${guide?.prompt ?? "Choose your next goal and play freely."}</div>${guide ? `<button class="performance-claim" type="button" data-onboarding-action="${guide.target}">${guide.actionLabel}</button><small class="settled ${guide.overdue ? "onboarding-recovery" : ""}">${guide.overdue ? `Recovery: ${guide.recovery}` : `Step ${onboardingComplete + 1} of ${onboardingRequired.length} · ${Math.floor(onboarding.elapsedMinutes)}m elapsed`}</small>` : ""}<small class="settled">Build → Customers → Cash → Placement → Hunts → Portfolio → Performance. Guided prompts end before 30 minutes.</small><button class="performance-claim secondary" type="button" data-onboarding-skip>Skip guided onboarding</button></section>`
     : "";
 
   const portfolioHtml = plot.portfolio.length
@@ -733,7 +755,7 @@ function render() {
     </header>
     ${offlineSummaryHtml}
     ${onboardingHtml}
-    <div class="hunt-strip">
+    <div class="hunt-strip" data-onboarding-target="hunt-strip">
       <div class="hunt-heading"><b>Market Hunts · ${plot.marketStage} · L${plot.empireLevel}</b><span>${plot.marketHuntPoints}/${plot.marketHuntPointCap} weekly points · ${plot.marketHuntSubscore}/100 score · pool ${Math.round(plot.marketPoolConsumption * 100)}%</span></div>
       <div class="hunt-list">
         ${hunts.map((hunt) => {
@@ -747,20 +769,20 @@ function render() {
         }).join("")}
       </div>
     </div>
-    <section class="portfolio-panel">
+    <section class="portfolio-panel" data-onboarding-target="portfolio-panel">
       <div class="portfolio-heading"><b>Stock Portfolio</b><span>In-game fragments</span></div>
       <div class="portfolio-list">${portfolioHtml}</div>
       <div class="collection-list">${collectionHtml}</div>
       ${bookHtml}
     </section>
-    <section class="performance-panel">
+    <section class="performance-panel" data-onboarding-target="performance-panel">
       <div class="portfolio-heading"><b>Weekly Performance · ${performance.week}</b><span>${performance.score}/120 · ${plot.plotBalance.toLocaleString()} $PLOT</span></div>
       <div class="performance-stats">${performanceRows}</div>
       <small class="settled">${plot.pendingPayout ? `Pending payout: ${plot.pendingPayout.payoutPlot.toLocaleString()} $PLOT from ${plot.pendingPayout.week}.` : performance.finalized ? (performance.eligible ? `Eligible payout: ${performance.payoutPlot.toLocaleString()} $PLOT${performance.claimed ? " · claimed" : ""}` : "Finalized but not eligible") : `${performance.activeDays}/3 active days · ${performance.completedHunts} hunts · snapshot in progress`}</small>
       ${plot.weeklyRedeemable ? `<button class="performance-claim" type="button" data-performance-claim data-performance-week="${plot.pendingPayout?.week ?? ""}">Claim weekly $PLOT payout</button>` : ""}
       ${!performance.finalized && performance.eligibilityReasons.length ? `<small class="settled">${performance.eligibilityReasons.slice(0, 2).join(" ")}</small>` : ""}
     </section>
-    <section class="day-panel">
+    <section class="day-panel" data-onboarding-target="settle">
       <div class="day-copy"><b>District Day · ${plot.event.title}</b><span>${plot.event.description}</span><small>Market event: ${plot.marketEvent.title} · ${plot.marketEvent.durationHours}h · ${plot.marketEvent.spawnMultiplier}× hunt spawn · ${plot.marketEvent.activityModifier}× activity</small></div>
       <div class="day-stats"><span>Risk <b>${risk}%</b></span><span>Reputation <b>${reputation}%</b></span><span>Customers <b>${plot.attributes.population.toLocaleString()} / ${plot.attributes.capacity.toLocaleString()}</b></span><span>Condition <b>${condition}%</b></span><span>Transactions <b>${plot.attributes.transactions.toLocaleString()}</b></span><span>Volume <b>${cashLabel(plot.attributes.volumeMinor)}</b></span><span>Synergies <b>${plot.attributes.synergyCount}</b></span><span>Placement <b>${plot.placement.score.placementScore}/100</b></span></div>
       <div class="segments"><span>Links ${plot.placement.directLinks} direct · ${plot.placement.supportLinks} support</span><span>Districts ${plot.placement.districts.length}</span><span>Penalties ${plot.placement.penalties.length}</span><span>Layout v${plot.placementAudit.layoutVersion}</span></div>
@@ -778,7 +800,7 @@ function render() {
     </section>
     ${receiptHtml}
     <p class="toast strip-toast">${toast}</p>
-    <main class="board-wrap" id="board-view">
+    <main class="board-wrap" id="board-view" data-onboarding-target="board">
       <div id="world">
         <div id="land">
           <div class="grid" id="grid">
@@ -798,7 +820,7 @@ function render() {
         ${hand
           .map((c) =>
             c.unlocked
-              ? `<button class="play-card" type="button" data-drag-type="${c.id}" title="${c.name}">
+              ? `<button class="play-card" type="button" data-drag-type="${c.id}" data-onboarding-target="${c.id === "cash_kiosk" ? "build-cash-kiosk" : c.id === "trading_booth" ? "build-trading-booth" : c.id === "savings_stand" ? "build-savings-stand" : ""}" title="${c.name}">
             <i></i><i></i><i></i><i></i>
             <span class="play-era">${ERA_LABEL[c.era]}</span>
             <span class="play-name">${c.name}</span>
