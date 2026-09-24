@@ -154,6 +154,7 @@ type Plot = {
     loadouts: ModuleLoadoutSummary[];
   };
   portfolio: { ticker: string; name: string; sector: string; unlockStage: string; units: number }[];
+  positions: { ticker: string; name: string; sector: string; source: string; weightBps: number; allocatedMinor: number; markBps: number; lastMarkDay: string | null; effectiveDay: string | null; updatedAt: number | null }[];
   collections: { id: string; name: string; tickers: string[]; reward: string; owned: number; total: number; complete: boolean }[];
   hunts: HuntView[];
   hunt: HuntView | null;
@@ -228,6 +229,7 @@ type Receipt = {
   cashDeltaMinor: number;
   cashAfterMinor: number;
   lines: { label: string; amountMinor: number }[];
+  portfolio?: { applied: boolean; marks: { ticker: string; returnBps: number }[]; grossMarkMinor: number; preFeeAumMinor: number; feeMinor: number; endAumMinor: number };
 };
 
 const KEY = "plotgo.playerId";
@@ -535,6 +537,11 @@ function bindOnce() {
       void skipOnboarding();
       return;
     }
+    const rebalance = t.closest<HTMLButtonElement>("button[data-rebalance]");
+    if (rebalance && !rebalance.disabled) {
+      void rebalancePortfolio();
+      return;
+    }
     const up = t.closest<HTMLElement>("[data-upgrade]");
     if (up?.dataset.upgrade) {
       void upgrade(up.dataset.upgrade);
@@ -700,6 +707,13 @@ function render() {
   const collectionHtml = plot.collections
     .map((collection) => `<span class="collection-chip ${collection.complete ? "complete" : ""}">${collection.name} ${collection.owned}/${collection.total}</span>`)
     .join("");
+  const positionAumMinor = plot.positions.reduce((sum, position) => sum + position.allocatedMinor, 0);
+  const portfolioEligible = plot.cards.some((card) => ["broker", "fund"].includes(CARDS[card.type]?.lineage ?? ""));
+  const positionRowsHtml = plot.positions.map((position) => {
+    const mark = position.lastMarkDay ? `${position.markBps >= 0 ? "+" : ""}${(position.markBps / 100).toFixed(2)}%` : "pending";
+    return `<div class="position-row"><div><b>${position.ticker}</b><small>${position.name} · ${position.sector} · ${mark}</small></div><label><input type="number" min="0" max="100" step="0.01" value="${(position.weightBps / 100).toFixed(2)}" data-position-weight="${position.ticker}" ${portfolioEligible ? "" : "disabled"}>%</label><strong>${cashLabel(position.allocatedMinor)}</strong></div>`;
+  }).join("");
+  const bookHtml = `<div class="portfolio-book"><div class="portfolio-heading"><b>Simulated portfolio book</b><span>AUM ${cashLabel(positionAumMinor)}</span></div><small class="settled">In-game assets · deterministic daily marks · not real securities. Fee: 150 bps/year, charged daily on end-of-day AUM.</small><div class="position-list">${positionRowsHtml}</div><div class="portfolio-actions"><button class="performance-claim" type="button" data-rebalance ${portfolioEligible ? "" : "disabled"}>Save weights</button><small>${portfolioEligible ? "Weights total 100%. Rebalance takes effect next UTC day." : "Place a Brokerage or Fund building to allocate."}</small></div></div>`;
   const performance = plot.performance;
   const eventState = plot.eventState;
   const performanceRows = Object.entries(performance.components)
@@ -737,6 +751,7 @@ function render() {
       <div class="portfolio-heading"><b>Stock Portfolio</b><span>In-game fragments</span></div>
       <div class="portfolio-list">${portfolioHtml}</div>
       <div class="collection-list">${collectionHtml}</div>
+      ${bookHtml}
     </section>
     <section class="performance-panel">
       <div class="portfolio-heading"><b>Weekly Performance · ${performance.week}</b><span>${performance.score}/120 · ${plot.plotBalance.toLocaleString()} $PLOT</span></div>
@@ -927,6 +942,22 @@ async function settle(verb: SessionVerb) {
     const data = await api("/api/session/settle", { method: "POST", body: JSON.stringify({ verb }) });
     plot = data;
     toast = data.receipt?.cashDeltaMinor >= 0 ? "District day settled." : "District day settled with a loss.";
+    render();
+  } catch (e) {
+    toast = (e as Error).message;
+    render();
+  }
+}
+
+async function rebalancePortfolio() {
+  try {
+    const weights = Object.fromEntries(["NVDA", "AAPL", "TSLA", "CASH"].map((ticker) => {
+      const input = document.querySelector<HTMLInputElement>(`input[data-position-weight="${ticker}"]`);
+      return [ticker, Math.round(Number(input?.value ?? 0) * 100)];
+    }));
+    const data = await api("/api/positions/rebalance", { method: "POST", body: JSON.stringify({ weights }) });
+    plot = await api("/api/plot");
+    toast = `Portfolio saved. Next daily mark begins ${data.receipt.effectiveDay === new Date().toISOString().slice(0, 10) ? "tomorrow" : data.receipt.effectiveDay}.`;
     render();
   } catch (e) {
     toast = (e as Error).message;

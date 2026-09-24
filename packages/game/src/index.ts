@@ -56,6 +56,18 @@ export {
   type StockRarity,
 } from "./stocks.ts";
 export {
+  PHASE4_ANNUAL_AUM_FEE_BPS,
+  PHASE4_DAILY_MARK_CAP_BPS,
+  PHASE4_INSTRUMENTS,
+  applyPortfolioMarks,
+  phase4Marks,
+  type Phase4DayMark,
+  type Phase4Instrument,
+  type Phase4Sector,
+  type PortfolioMarkResult,
+  type PortfolioPositionValue,
+} from "./portfolio.ts";
+export {
   PERFORMANCE_RULES,
   PERFORMANCE_RUNTIME_TARGETS,
   PERFORMANCE_STAGE_RULES,

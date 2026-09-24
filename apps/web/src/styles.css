@@ -92,6 +92,17 @@ h1, h2, .brand { font-family: Fraunces, Georgia, serif; }
 .collection-chip { color: #9bafbd; }
 .collection-chip.complete { color: var(--gold); border: 1px solid var(--gold); }
 .portfolio-empty { color: #8f8a7d; font-size: 10px; }
+.portfolio-book { margin-top: 9px; padding-top: 8px; border-top: 1px solid #3d4657; }
+.position-list { display: grid; gap: 4px; margin-top: 6px; }
+.position-row { display: grid; grid-template-columns: 1fr 62px 58px; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 5px; background: #192231; color: #c9c3b0; font-size: 10px; }
+.position-row b { color: var(--cream); margin-right: 5px; }
+.position-row small { color: #8f8a7d; font-size: 9px; }
+.position-row label { display: flex; align-items: center; gap: 2px; color: #8f8a7d; }
+.position-row input { width: 45px; border: 1px solid #465366; border-radius: 4px; background: #111824; color: var(--cream); padding: 3px; font-size: 10px; }
+.position-row strong { text-align: right; color: var(--cream); font-size: 10px; }
+.portfolio-actions { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+.portfolio-actions .performance-claim { margin-top: 0; }
+.portfolio-actions small { color: #8f8a7d; font-size: 9px; }
 .performance-panel { position: relative; z-index: 5; margin: 8px 10px 0; padding: 8px 10px; border: 1px solid #3d4657; border-radius: 12px; background: rgba(20, 24, 36, 0.84); backdrop-filter: blur(8px); }
 .performance-stats { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 6px; color: #8f8a7d; font-size: 9px; }
 .performance-stats b { color: var(--cream); }

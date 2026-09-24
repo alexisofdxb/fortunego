@@ -9,6 +9,9 @@ import {
   resolveArchetype,
   resolveModuleEffects,
   settleDistrict,
+  PHASE4_INSTRUMENTS,
+  applyPortfolioMarks,
+  phase4Marks,
   type PlacedCard,
 } from "@plotgo/game";
 
@@ -16,6 +19,21 @@ const fail = (message: string): never => { throw new Error(`balance regression: 
 const assert = (condition: unknown, message: string): asserts condition => { if (!condition) fail(message); };
 const eras = ["humble", "starter", "growing", "established", "elite", "tycoon"] as const;
 const event = eventForDay("2026-09-25", "balance-regression");
+const marks = phase4Marks("2026-09-25", "balance-regression");
+assert(JSON.stringify(marks) === JSON.stringify(phase4Marks("2026-09-25", "balance-regression")), "Phase 4 marks are not deterministic");
+assert(marks.length === PHASE4_INSTRUMENTS.length && marks.find((mark) => mark.ticker === "CASH")?.returnBps === 0, "Phase 4 Cash mark is not zero");
+assert(marks.every((mark) => mark.returnBps >= -500 && mark.returnBps <= 500), "Phase 4 mark exceeded the ±500 bps cap");
+const forcedMarks = [
+  { ticker: "NVDA" as const, returnBps: 500 },
+  { ticker: "AAPL" as const, returnBps: -500 },
+  { ticker: "TSLA" as const, returnBps: 0 },
+  { ticker: "CASH" as const, returnBps: 0 },
+];
+const concentrated = applyPortfolioMarks([{ ticker: "NVDA", weightBps: 10_000, allocatedMinor: 10_000_000_000 }], forcedMarks);
+const diversified = applyPortfolioMarks([{ ticker: "NVDA", weightBps: 5_000, allocatedMinor: 5_000_000_000 }, { ticker: "AAPL", weightBps: 5_000, allocatedMinor: 5_000_000_000 }], forcedMarks);
+assert(concentrated.endAumMinor !== diversified.endAumMinor, "Different Phase 4 weights did not produce different AUM results");
+assert(concentrated.feeMinor !== diversified.feeMinor, "Different Phase 4 weights did not produce different AUM fees");
+assert(concentrated.endAumMinor === concentrated.preFeeAumMinor - concentrated.feeMinor, "Phase 4 fee did not reconcile book value");
 
 function card(type: string, stage: 1 | 2 | 3 = 1, x = 0, y = 0): PlacedCard {
   return { id: `${type}-${stage}-${x}-${y}`, type, stage, x, y, orientation: 0 };

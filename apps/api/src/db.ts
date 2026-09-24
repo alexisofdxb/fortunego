@@ -84,6 +84,8 @@ CREATE TABLE IF NOT EXISTS plotgo_position (
   weight_bps INTEGER NOT NULL DEFAULT 0,
   allocated_minor INTEGER NOT NULL DEFAULT 0,
   mark_bps INTEGER NOT NULL DEFAULT 0,
+  last_mark_day TEXT NOT NULL DEFAULT '',
+  effective_day TEXT NOT NULL DEFAULT '',
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (player_id, ticker)
 );
@@ -161,6 +163,7 @@ CREATE TABLE IF NOT EXISTS plotgo_district_day (
   day TEXT NOT NULL,
   seed INTEGER NOT NULL,
   event_id TEXT NOT NULL,
+  marks_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (player_id, day)
 );
 CREATE TABLE IF NOT EXISTS plotgo_session (
@@ -380,6 +383,18 @@ CREATE TABLE IF NOT EXISTS plotgo_offline_summaries (
   created_at INTEGER NOT NULL
 );
 `);
+
+// Additive migrations keep existing Phase 1–3 saves valid while the Phase 4 book
+// gains replay metadata. SQLite has no IF NOT EXISTS form for ADD COLUMN.
+for (const statement of [
+  "ALTER TABLE plotgo_position ADD COLUMN last_mark_day TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE plotgo_position ADD COLUMN effective_day TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE plotgo_district_day ADD COLUMN marks_json TEXT NOT NULL DEFAULT '{}'",
+]) {
+  try { sqlite.exec(statement); } catch (error) {
+    if (!(error instanceof Error) || !/duplicate column name/i.test(error.message)) throw error;
+  }
+}
 
 sqlite.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_module_reward_source

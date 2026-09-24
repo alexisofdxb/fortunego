@@ -1042,10 +1042,10 @@ Each phase is shippable. Flags are listed again under Rollout. "Systems touched"
 
 - **Goal.** Fund and brokerage hold weights. Marks move AUM. Sector tags affect AI Mania and theme bonuses.
 - **User-visible.** A rebalance verb that sets weights (must sum to 100%). Next day the receipt shows per-symbol return bps. Sector chip on the building. Copy on every asset says "in-game". No external prices.
-- **Systems.** `plotgo_position`, in-game instrument definitions, allocation/rebalance route, and portfolio panel data are now wired. Day-mark settlement and AUM fee receipts remain the next Phase 4 slice.
+- **Systems.** `plotgo_position`, in-game instrument definitions, allocation/rebalance route, deterministic stored day marks, compounded AUM, daily 150 bps/year fee receipts, and portfolio panel disclosure are wired. Rebalances preserve the current book and become effective on the next UTC day.
 - **Data.** Positions. Asset definitions remain in code, not a table, until phase 7.
 - **Non-goals.** Live feeds, wallet trading, `trading:agent`, real NVDA.
-- **Exit.** Two funds with different weights earn different AUM fees on the same day. Cash weights earn zero mark. Settlement still matches a replay that includes the stored marks.
+- **Exit.** Two funds with different weights earn different AUM fees on the same day. Cash weights earn zero mark. Settlement matches a replay that includes the stored marks.
 
 ### Phase 5 — Player economy
 

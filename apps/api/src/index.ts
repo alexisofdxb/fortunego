@@ -59,6 +59,9 @@ import {
   rollEventModuleReward,
   rollHuntModuleReward,
   resolveModuleEffects,
+  PHASE4_INSTRUMENTS,
+  applyPortfolioMarks,
+  phase4Marks,
   OFFLINE_CONFIG,
   splitOfflineWindow,
   type PlacedCard,
@@ -99,6 +102,7 @@ function newId(): string {
 }
 
 const MODULE_CONFIG_VERSION = "catalog-v1.0";
+const PHASE4_TICKERS = ["NVDA", "AAPL", "TSLA", "CASH"] as const;
 
 function ensureModuleConfig() {
   const insert = sqlite.prepare(`
@@ -425,11 +429,22 @@ function archetypeResolutionForPlayer(playerId: string, board: PlacedCard[]) {
   return resolveArchetype(board, row?.archetype ?? null, Number(portfolio.count) > 0);
 }
 
-const PHASE4_INSTRUMENTS = ["NVDA", "AAPL", "TSLA", "CASH"] as const;
 function positionRows(playerId: string) {
-  const rows = sqlite.prepare("SELECT ticker, weight_bps AS weightBps, allocated_minor AS allocatedMinor, mark_bps AS markBps, updated_at AS updatedAt FROM plotgo_position WHERE player_id = ? ORDER BY ticker").all(playerId) as Record<string, unknown>[];
+  const rows = sqlite.prepare("SELECT ticker, weight_bps AS weightBps, allocated_minor AS allocatedMinor, mark_bps AS markBps, last_mark_day AS lastMarkDay, effective_day AS effectiveDay, updated_at AS updatedAt FROM plotgo_position WHERE player_id = ? ORDER BY ticker").all(playerId) as Record<string, unknown>[];
   const byTicker = new Map(rows.map((row) => [String(row.ticker), row]));
-  return PHASE4_INSTRUMENTS.map((ticker) => ({ ticker, inGame: true, weightBps: Number(byTicker.get(ticker)?.weightBps ?? (ticker === "CASH" && rows.length === 0 ? 10_000 : 0)), allocatedMinor: Number(byTicker.get(ticker)?.allocatedMinor ?? 0), markBps: Number(byTicker.get(ticker)?.markBps ?? 0), updatedAt: byTicker.get(ticker)?.updatedAt == null ? null : Number(byTicker.get(ticker)?.updatedAt) }));
+  return PHASE4_INSTRUMENTS.map((instrument) => {
+    const row = byTicker.get(instrument.ticker);
+    return {
+      ...instrument,
+      inGame: true,
+      weightBps: Number(row?.weightBps ?? (instrument.ticker === "CASH" && rows.length === 0 ? 10_000 : 0)),
+      allocatedMinor: Number(row?.allocatedMinor ?? 0),
+      markBps: Number(row?.markBps ?? 0),
+      lastMarkDay: row?.lastMarkDay == null ? null : String(row.lastMarkDay),
+      effectiveDay: row?.effectiveDay == null ? null : String(row.effectiveDay),
+      updatedAt: row?.updatedAt == null ? null : Number(row.updatedAt),
+    };
+  });
 }
 
 function presenceRow(playerId: string): PresenceRow | undefined {
@@ -1416,15 +1431,54 @@ function recordLedger(playerId: string, day: string, reason: string, amountMinor
   ).run(newId(), playerId, day, reason, amountMinor, balanceMinor, JSON.stringify(metadata), Date.now());
 }
 
+function parsePhase4Marks(raw: unknown) {
+  try {
+    const parsed = JSON.parse(String(raw ?? "[]"));
+    if (!Array.isArray(parsed)) return null;
+    const marks = parsed.filter((mark): mark is { ticker: (typeof PHASE4_TICKERS)[number]; returnBps: number } =>
+      mark && PHASE4_TICKERS.includes(mark.ticker) && Number.isFinite(Number(mark.returnBps)),
+    ).map((mark) => ({ ticker: mark.ticker, returnBps: Number(mark.returnBps) }));
+    return marks.length === PHASE4_TICKERS.length ? marks : null;
+  } catch {
+    return null;
+  }
+}
+
 function districtDay(playerId: string, day: string) {
-  const existing = sqlite.prepare("SELECT player_id, day, seed, event_id AS eventId FROM plotgo_district_day WHERE player_id = ? AND day = ?").get(playerId, day) as
-    | { player_id: string; day: string; seed: number; eventId: string }
+  const existing = sqlite.prepare("SELECT player_id, day, seed, event_id AS eventId, marks_json AS marksJson FROM plotgo_district_day WHERE player_id = ? AND day = ?").get(playerId, day) as
+    | { player_id: string; day: string; seed: number; eventId: string; marksJson: string }
     | undefined;
-  if (existing) return { seed: existing.seed, event: eventForDay(day, playerId) };
+  if (existing) {
+    const event = eventForDay(day, playerId);
+    const marks = parsePhase4Marks(existing.marksJson) ?? phase4Marks(day, playerId, marketEventForDay(day, playerId));
+    if (!parsePhase4Marks(existing.marksJson)) sqlite.prepare("UPDATE plotgo_district_day SET marks_json = ? WHERE player_id = ? AND day = ?").run(JSON.stringify(marks), playerId, day);
+    return { seed: existing.seed, event, marks };
+  }
   const seed = seedForDay(day, playerId);
   const event = eventForDay(day, playerId);
-  sqlite.prepare("INSERT INTO plotgo_district_day (player_id, day, seed, event_id) VALUES (?, ?, ?, ?)").run(playerId, day, seed, event.id);
-  return { seed, event };
+  const marks = phase4Marks(day, playerId, marketEventForDay(day, playerId));
+  sqlite.prepare("INSERT INTO plotgo_district_day (player_id, day, seed, event_id, marks_json) VALUES (?, ?, ?, ?, ?)").run(playerId, day, seed, event.id, JSON.stringify(marks));
+  return { seed, event, marks };
+}
+
+function settlePortfolio(playerId: string, day: string, marks: ReturnType<typeof phase4Marks>) {
+  const rows = sqlite.prepare("SELECT ticker, weight_bps AS weightBps, allocated_minor AS allocatedMinor, last_mark_day AS lastMarkDay, effective_day AS effectiveDay FROM plotgo_position WHERE player_id = ? ORDER BY ticker").all(playerId) as Record<string, unknown>[];
+  const eligible = rows.filter((row) => {
+    const ticker = String(row.ticker);
+    const effectiveDay = String(row.effectiveDay ?? "");
+    return PHASE4_TICKERS.includes(ticker as (typeof PHASE4_TICKERS)[number]) && (effectiveDay === "" || effectiveDay < day) && String(row.lastMarkDay ?? "") !== day;
+  });
+  if (!eligible.length) return { applied: false, grossMarkMinor: 0, preFeeAumMinor: 0, feeMinor: 0, endAumMinor: 0, positions: [], marks };
+  const result = applyPortfolioMarks(eligible.map((row) => ({
+    ticker: String(row.ticker) as (typeof PHASE4_TICKERS)[number],
+    weightBps: Number(row.weightBps),
+    allocatedMinor: Math.max(0, Number(row.allocatedMinor)),
+  })), marks);
+  sqlite.transaction(() => {
+    const update = sqlite.prepare("UPDATE plotgo_position SET allocated_minor = ?, mark_bps = ?, last_mark_day = ?, updated_at = ? WHERE player_id = ? AND ticker = ?");
+    for (const position of result.positions) update.run(position.endMinor, position.markBps, day, Date.now(), playerId, position.ticker);
+  })();
+  return { applied: true, ...result, marks };
 }
 
 function sessionFor(playerId: string, day: string) {
@@ -1697,7 +1751,7 @@ app.get("/api/portfolio", async (c) => {
   if (!player) return c.json({ error: "no plot" }, 404);
   const { portfolio, collections } = await loadFrags(id);
   recordOnboardingMilestone(id, "onboarding_first_portfolio", "portfolio.view");
-  return c.json({ portfolio, collections, positions: positionRows(id), instruments: PHASE4_INSTRUMENTS.map((ticker) => ({ ticker, inGame: true })) });
+  return c.json({ portfolio, collections, positions: positionRows(id), instruments: PHASE4_INSTRUMENTS });
 });
 
 app.get("/api/positions", async (c) => {
@@ -1705,26 +1759,43 @@ app.get("/api/positions", async (c) => {
   if (!id) return c.json({ error: "x-player-id required" }, 401);
   const [player] = await db.select().from(players).where(eq(players.id, id));
   if (!player) return c.json({ error: "no plot" }, 404);
-  return c.json({ positions: positionRows(id), instruments: PHASE4_INSTRUMENTS.map((ticker) => ({ ticker, inGame: true })) });
+  return c.json({ positions: positionRows(id), instruments: PHASE4_INSTRUMENTS });
 });
 
-const RebalanceInput = z.object({ weights: z.record(z.enum(PHASE4_INSTRUMENTS), z.number().int().min(0).max(10_000)) });
+const RebalanceInput = z.object({ weights: z.record(z.enum(PHASE4_TICKERS), z.number().int().min(0).max(10_000)) });
 app.post("/api/positions/rebalance", async (c) => {
   const id = c.req.header("x-player-id");
   if (!id) return c.json({ error: "x-player-id required" }, 401);
   const [player] = await db.select().from(players).where(eq(players.id, id));
   if (!player) return c.json({ error: "no plot" }, 404);
+  const board = await loadCards(id);
+  if (!board.some((card) => ["broker", "fund"].includes(CARDS[resolveType(card.type)]?.lineage ?? ""))) {
+    return c.json({ error: "Place a Brokerage or Fund building before allocating a portfolio" }, 409);
+  }
   const body = RebalanceInput.parse(await c.req.json());
-  const weights = Object.fromEntries(PHASE4_INSTRUMENTS.map((ticker) => [ticker, Number(body.weights[ticker] ?? 0)]));
+  const weights = Object.fromEntries(PHASE4_TICKERS.map((ticker) => [ticker, Number(body.weights[ticker] ?? 0)])) as Record<(typeof PHASE4_TICKERS)[number], number>;
   if (Object.values(weights).reduce((sum, value) => sum + value, 0) !== 10_000) return c.json({ error: "portfolio weights must total 10000 bps" }, 400);
   const now = Date.now();
+  const effectiveDay = utcDay(now);
+  const existing = sqlite.prepare("SELECT COALESCE(SUM(allocated_minor), 0) AS allocatedMinor FROM plotgo_position WHERE player_id = ?").get(id) as { allocatedMinor: number };
+  const portfolioCapitalMinor = Number(existing.allocatedMinor) > 0 ? Number(existing.allocatedMinor) : Number(player.cashMinor);
   sqlite.transaction(() => {
-    const upsert = sqlite.prepare("INSERT INTO plotgo_position (player_id, ticker, weight_bps, allocated_minor, mark_bps, updated_at) VALUES (?, ?, ?, ?, 0, ?) ON CONFLICT(player_id, ticker) DO UPDATE SET weight_bps = excluded.weight_bps, allocated_minor = excluded.allocated_minor, updated_at = excluded.updated_at");
-    for (const ticker of PHASE4_INSTRUMENTS) upsert.run(id, ticker, weights[ticker], Math.floor(player.cashMinor * weights[ticker] / 10_000), now);
+    const upsert = sqlite.prepare("INSERT INTO plotgo_position (player_id, ticker, weight_bps, allocated_minor, mark_bps, last_mark_day, effective_day, updated_at) VALUES (?, ?, ?, ?, 0, '', ?, ?) ON CONFLICT(player_id, ticker) DO UPDATE SET weight_bps = excluded.weight_bps, allocated_minor = excluded.allocated_minor, mark_bps = 0, effective_day = excluded.effective_day, updated_at = excluded.updated_at");
+    for (const ticker of PHASE4_TICKERS) upsert.run(id, ticker, weights[ticker], Math.floor(portfolioCapitalMinor * weights[ticker] / 10_000), effectiveDay, now);
   })();
   recordOnboardingMilestone(id, "onboarding_first_portfolio", "portfolio.rebalance");
   recordMeaningfulAction(id, "portfolio:rebalance");
-  return c.json({ positions: positionRows(id), instruments: PHASE4_INSTRUMENTS.map((ticker) => ({ ticker, inGame: true })) });
+  return c.json({
+    positions: positionRows(id),
+    instruments: PHASE4_INSTRUMENTS,
+    receipt: {
+      type: "rebalance",
+      effectiveDay,
+      capitalMinor: portfolioCapitalMinor,
+      weights,
+      message: "In-game positions are simulated and will receive their next daily mark on the next UTC settlement.",
+    },
+  });
 });
 
 app.get("/api/onboarding", (c) => {
@@ -1805,13 +1876,16 @@ app.post("/api/session/settle", async (c) => {
     moduleEffects,
     archetype.effects,
   );
-  const nextCash = Math.max(0, p.cashMinor + result.cashDeltaMinor);
+  const portfolio = settlePortfolio(id, day, dayData.marks);
+  const portfolioCashMinor = portfolio.applied ? portfolio.feeMinor : 0;
+  const totalCashDeltaMinor = result.cashDeltaMinor + portfolioCashMinor;
+  const nextCash = Math.max(0, p.cashMinor + totalCashDeltaMinor);
   const performanceStage = marketStageForEmpireLevel(currentEmpireLevel(id, p.board));
   await db
     .update(players)
     .set({
       cashMinor: nextCash,
-      earnedMinor: p.earnedMinor + result.earnedDeltaMinor,
+      earnedMinor: p.earnedMinor + result.earnedDeltaMinor + portfolioCashMinor,
       riskBps: result.riskBps,
       reputationBps: result.reputationBps,
       conditionBps: result.conditionBps,
@@ -1820,7 +1894,7 @@ app.post("/api/session/settle", async (c) => {
       satisfactionBps: result.satisfactionBps,
       transactions: result.transactions,
       volumeMinor: result.volumeMinor,
-      weeklyScore: p.weeklyScore + result.earnedDeltaMinor,
+      weeklyScore: p.weeklyScore + result.earnedDeltaMinor + portfolioCashMinor,
     })
     .where(eq(players.id, id));
   upsertWeeklySessionPerformance(id, isoWeek(new Date(`${day}T00:00:00Z`)), performanceStage, p.activeDays.filter((activeDay) => isoWeek(new Date(`${activeDay}T00:00:00Z`)) === isoWeek(new Date(`${day}T00:00:00Z`))).length, p.population, result);
@@ -1829,8 +1903,8 @@ app.post("/api/session/settle", async (c) => {
     event: dayData.event,
     marketEvent,
     verb: body.verb,
-    lines: result.lines,
-    cashDeltaMinor: result.cashDeltaMinor,
+    lines: portfolio.applied ? [...result.lines, { label: "Portfolio AUM fee", amountMinor: portfolioCashMinor }] : result.lines,
+    cashDeltaMinor: totalCashDeltaMinor,
     cashAfterMinor: nextCash,
     riskBps: result.riskBps,
     reputationBps: result.reputationBps,
@@ -1838,13 +1912,21 @@ app.post("/api/session/settle", async (c) => {
     volumeMinor: result.volumeMinor,
     synergyCount: result.synergyCount,
     revenue: result.revenue,
+    portfolio: {
+      applied: portfolio.applied,
+      marks: portfolio.marks,
+      grossMarkMinor: portfolio.grossMarkMinor,
+      preFeeAumMinor: portfolio.preFeeAumMinor,
+      feeMinor: portfolio.feeMinor,
+      endAumMinor: portfolio.endAumMinor,
+    },
   };
-  recordLedger(id, day, "session", result.cashDeltaMinor, nextCash, receipt);
+  recordLedger(id, day, "session", totalCashDeltaMinor, nextCash, receipt);
   sqlite.prepare(
     "INSERT INTO plotgo_session (player_id, day, verb, receipt_json, settled_at) VALUES (?, ?, ?, ?, ?)",
   ).run(id, day, body.verb, JSON.stringify(receipt), Date.now());
   if (result.population > 0) recordOnboardingMilestone(id, "onboarding_first_customer", "session.settle");
-  if (result.cashDeltaMinor > 0) recordOnboardingMilestone(id, "onboarding_first_cash", "session.settle");
+  if (totalCashDeltaMinor > 0) recordOnboardingMilestone(id, "onboarding_first_cash", "session.settle");
   recordMeaningfulAction(id, `session:${body.verb}`);
   return c.json({ ...(await snapshot(id)), receipt });
 });
