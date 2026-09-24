@@ -60,6 +60,16 @@ CREATE TABLE IF NOT EXISTS plotgo_onboarding_milestones (
   achieved_at INTEGER NOT NULL,
   PRIMARY KEY (player_id, milestone_id)
 );
+CREATE TABLE IF NOT EXISTS plotgo_tutorial_recovery_ledger (
+  id TEXT PRIMARY KEY,
+  player_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  credited_minor INTEGER NOT NULL DEFAULT 0,
+  source_event TEXT NOT NULL,
+  metadata_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE (player_id, kind)
+);
 CREATE TABLE IF NOT EXISTS cards (
   id TEXT PRIMARY KEY,
   player_id TEXT NOT NULL,

@@ -357,6 +357,8 @@ type OnboardingRow = {
   onboardingCompletedAt: number | null;
   onboardingSkippedAt: number | null;
   personalEventProtectionUntil: number;
+  firstCustomerAssistUsed: number;
+  freeTutorialRelocationUsed: number;
 };
 
 function onboardingRow(playerId: string): OnboardingRow | undefined {
@@ -364,7 +366,9 @@ function onboardingRow(playerId: string): OnboardingRow | undefined {
     SELECT onboarding_session_id AS onboardingSessionId, onboarding_started_at AS onboardingStartedAt,
       onboarding_step AS onboardingStep, onboarding_status AS onboardingStatus, onboarding_xp AS onboardingXp,
       onboarding_completed_at AS onboardingCompletedAt, onboarding_skipped_at AS onboardingSkippedAt,
-      personal_event_protection_until AS personalEventProtectionUntil
+      personal_event_protection_until AS personalEventProtectionUntil,
+      first_customer_assist_used AS firstCustomerAssistUsed,
+      free_tutorial_relocation_used AS freeTutorialRelocationUsed
     FROM players WHERE id = ?
   `).get(playerId) as OnboardingRow | undefined;
 }
@@ -390,6 +394,10 @@ function onboardingSnapshot(playerId: string) {
     completedAt: row.onboardingCompletedAt,
     skippedAt: row.onboardingSkippedAt,
     protectionUntil: row.personalEventProtectionUntil,
+    recovery: {
+      firstCustomerAssistUsed: row.firstCustomerAssistUsed === 1,
+      freeTutorialRelocationUsed: row.freeTutorialRelocationUsed === 1,
+    },
     elapsedMinutes: Number(elapsedMinutes.toFixed(2)),
     guide: guide ? { ...guide, overdue: elapsedMinutes > ((onboardingMilestone(guide.milestoneId)?.targetMinute ?? 0) + 2) } : null,
     milestones: ONBOARDING_MILESTONES.map((milestone) => ({
@@ -421,6 +429,40 @@ function recordOnboardingMilestone(playerId: string, milestoneId: string, source
   const complete = requiredIds.every((id) => achieved.includes(id));
   sqlite.prepare("UPDATE players SET onboarding_xp = ?, onboarding_step = ?, onboarding_status = ?, onboarding_completed_at = CASE WHEN ? THEN COALESCE(onboarding_completed_at, ?) ELSE onboarding_completed_at END WHERE id = ?").run(xp, nextStep, complete ? "completed" : "active", complete ? 1 : 0, complete ? now : null, playerId);
   return true;
+}
+
+function hasTutorialCashAccessSynergy(board: PlacedCard[]): boolean {
+  return resolvePlacement(board).links.some((link) => link.rule === "cash_kiosk+savings_stand");
+}
+
+function claimTutorialRecovery(
+  playerId: string,
+  kind: "first_customer_assist" | "free_tutorial_relocation",
+  creditedMinor: number,
+  metadata: Record<string, unknown>,
+): boolean {
+  const flagColumn = kind === "first_customer_assist" ? "first_customer_assist_used" : "free_tutorial_relocation_used";
+  const now = Date.now();
+  const claimed = sqlite.transaction(() => {
+    const updated = sqlite.prepare(`UPDATE players SET ${flagColumn} = 1 WHERE id = ? AND ${flagColumn} = 0`).run(playerId);
+    if (updated.changes !== 1) return false;
+    sqlite.prepare(`INSERT OR IGNORE INTO plotgo_tutorial_recovery_ledger
+      (id, player_id, kind, credited_minor, source_event, metadata_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(newId(), playerId, kind, Math.max(0, Math.round(creditedMinor)), `onboarding.${kind}`, JSON.stringify(metadata), now);
+    return true;
+  })();
+  if (!claimed) return false;
+  const balance = sqlite.prepare("SELECT cash_minor AS cashMinor FROM players WHERE id = ?").get(playerId) as { cashMinor: number };
+  recordLedger(playerId, utcDay(now), "onboarding_recovery", 0, Number(balance.cashMinor), { kind, creditedMinor: Math.max(0, Math.round(creditedMinor)), ...metadata });
+  return true;
+}
+
+function tutorialRelocationAvailable(playerId: string, board: PlacedCard[], now = Date.now()): boolean {
+  const row = onboardingRow(playerId);
+  if (!row || row.onboardingStatus !== "active" || row.freeTutorialRelocationUsed === 1 || hasTutorialCashAccessSynergy(board)) return false;
+  if (!row.onboardingStartedAt || now - row.onboardingStartedAt > 20 * 60_000) return false;
+  return board.some((card) => card.type === "cash_kiosk") && board.some((card) => card.type === "savings_stand");
 }
 
 function currentEmpireLevel(playerId: string, board: PlacedCard[]): number {
@@ -1534,7 +1576,7 @@ async function snapshot(playerId: string, moveTxId?: string) {
   const archetype = archetypeResolutionForPlayer(playerId, activeBoard);
   const placement = resolvePlacement(activeBoard);
   const placementAudit = recordPlacementAudit(playerId, p.board, moveTxId);
-  if (placement.links.length > 0) recordOnboardingMilestone(playerId, "onboarding_first_synergy", "placement.resolve");
+  if (hasTutorialCashAccessSynergy(activeBoard)) recordOnboardingMilestone(playerId, "onboarding_first_synergy", "placement.resolve");
   const metrics = settleDistrict(
     activeBoard,
     activeEvent,
@@ -1872,7 +1914,7 @@ app.post("/api/session/settle", async (c) => {
   const activeEvent = effectiveDistrictEvent(dayData.event, marketEvent, collectionBonuses(map).customerDemandBps, eventLayer.modifiers);
   const moduleEffects = moduleEffectsForBoard(id, activeBoard, [eventLayer.global.id, ...eventLayer.personalEvents.map((event) => event.id)], eventLayer.cycle.state);
   const archetype = archetypeResolutionForPlayer(id, activeBoard);
-  const result = settleDistrict(
+  let result = settleDistrict(
     activeBoard,
     activeEvent,
     body.verb,
@@ -1881,6 +1923,29 @@ app.post("/api/session/settle", async (c) => {
     moduleEffects,
     archetype.effects,
   );
+  let firstCustomerAssistUsed = false;
+  const onboarding = onboardingRow(id);
+  const onboardingElapsedMs = onboarding?.onboardingStartedAt == null ? 0 : Date.now() - onboarding.onboardingStartedAt;
+  const firstCustomerMissing = !onboardingMilestoneRows(id).some((milestone) => milestone.milestoneId === "onboarding_first_customer");
+  if (result.population <= 0 && activeBoard.length > 0 && onboarding?.onboardingStatus === "active" && onboarding.firstCustomerAssistUsed === 0 && firstCustomerMissing && onboardingElapsedMs >= 2 * 60_000) {
+    const capacityBeforeAssist = activeBoard.reduce((sum, card) => sum + Math.max(1, CARDS[resolveType(card.type)]?.customersBase ?? 1), 0);
+    if (capacityBeforeAssist > 0 && claimTutorialRecovery(id, "first_customer_assist", 0, { reason: "first_customer_demand_sla", elapsedMinutes: Number((onboardingElapsedMs / 60_000).toFixed(2)) })) {
+      const assistedEvent = { ...activeEvent, populationBps: Math.max(activeEvent.populationBps, 10_000) };
+      const assistedResult = settleDistrict(
+        activeBoard,
+        assistedEvent,
+        body.verb,
+        { cashMinor: p.cashMinor, reputationBps: p.reputationBps, conditionBps: p.conditionBps },
+        dayData.seed,
+        moduleEffects,
+        archetype.effects,
+      );
+      if (assistedResult.population > 0) {
+        result = assistedResult;
+        firstCustomerAssistUsed = true;
+      }
+    }
+  }
   const portfolio = settlePortfolio(id, day, dayData.marks);
   const portfolioCashMinor = portfolio.applied ? portfolio.feeMinor : 0;
   const totalCashDeltaMinor = result.cashDeltaMinor + portfolioCashMinor;
@@ -1925,6 +1990,7 @@ app.post("/api/session/settle", async (c) => {
       feeMinor: portfolio.feeMinor,
       endAumMinor: portfolio.endAumMinor,
     },
+    onboardingRecovery: firstCustomerAssistUsed ? ["first_customer_assist"] : [],
   };
   recordLedger(id, day, "session", totalCashDeltaMinor, nextCash, receipt);
   sqlite.prepare(
@@ -2074,7 +2140,7 @@ app.post("/api/plot/place", async (c) => {
   if (spec.id === "trading_booth") recordOnboardingMilestone(id, "onboarding_second_business", "plot.place");
   if (spec.id === "savings_stand") recordOnboardingMilestone(id, "onboarding_third_business", "plot.place");
   const placedBoard = await loadCards(id);
-  if (resolvePlacement(placedBoard).links.length > 0) recordOnboardingMilestone(id, "onboarding_first_synergy", "placement.resolve");
+  if (hasTutorialCashAccessSynergy(placedBoard)) recordOnboardingMilestone(id, "onboarding_first_synergy", "placement.resolve");
   recordMeaningfulAction(id, `place:${spec.id}`);
   return c.json(await snapshot(id, newId()));
 });
@@ -2105,10 +2171,20 @@ app.post("/api/plot/move", async (c) => {
   }
   const now = Date.now();
   const freeWindow = !card.placedAt || now - card.placedAt < 24 * 3_600_000;
-  const fee = freeWindow ? 0 : Math.round(buildValueMinor(card) * 0.05);
+  const tutorialCorrection = tutorialRelocationAvailable(id, p.board, now) &&
+    (card.type === "cash_kiosk" || card.type === "savings_stand");
+  const normalFee = freeWindow ? 0 : Math.round(buildValueMinor(card) * 0.05);
+  const fee = tutorialCorrection ? 0 : normalFee;
   if (p.cashMinor < fee) return c.json({ error: "Not enough Cash for relocation fee" }, 400);
-  const downtimeUntil = freeWindow ? 0 : now + 15 * 60_000;
+  const downtimeUntil = tutorialCorrection || freeWindow ? 0 : now + 15 * 60_000;
   await db.update(cards).set({ x: body.x, y: body.y, orientation, operationalUntil: downtimeUntil }).where(eq(cards.id, body.cardId));
+  if (tutorialCorrection) {
+    claimTutorialRecovery(id, "free_tutorial_relocation", normalFee, {
+      cardId: body.cardId,
+      type: card.type,
+      reason: "cash_access_synergy_recovery",
+    });
+  }
   if (fee > 0) {
     await db.update(players).set({ cashMinor: p.cashMinor - fee }).where(eq(players.id, id));
     recordLedger(id, day, "relocation", -fee, p.cashMinor - fee, { cardId: body.cardId, feeMinor: fee, downtimeUntil });
@@ -2133,10 +2209,20 @@ app.post("/api/plot/rotate", async (c) => {
   if (!fits(p.board, card.type, card.x, card.y, card.id, 12, body.orientation)) return c.json({ error: "Rotated footprint does not fit" }, 400);
   const now = Date.now();
   const freeWindow = !card.placedAt || now - card.placedAt < 24 * 3_600_000;
-  const fee = freeWindow ? 0 : Math.round(buildValueMinor(card) * 0.05);
+  const tutorialCorrection = tutorialRelocationAvailable(id, p.board, now) &&
+    (card.type === "cash_kiosk" || card.type === "savings_stand");
+  const normalFee = freeWindow ? 0 : Math.round(buildValueMinor(card) * 0.05);
+  const fee = tutorialCorrection ? 0 : normalFee;
   if (p.cashMinor < fee) return c.json({ error: "Not enough Cash for relocation fee" }, 400);
-  const downtimeUntil = freeWindow ? 0 : now + 15 * 60_000;
+  const downtimeUntil = tutorialCorrection || freeWindow ? 0 : now + 15 * 60_000;
   await db.update(cards).set({ orientation: body.orientation, operationalUntil: downtimeUntil }).where(eq(cards.id, card.id));
+  if (tutorialCorrection) {
+    claimTutorialRecovery(id, "free_tutorial_relocation", normalFee, {
+      cardId: card.id,
+      type: card.type,
+      reason: "cash_access_synergy_recovery",
+    });
+  }
   if (fee > 0) {
     await db.update(players).set({ cashMinor: p.cashMinor - fee }).where(eq(players.id, id));
     recordLedger(id, utcDay(), "rotation", -fee, p.cashMinor - fee, { cardId: card.id, feeMinor: fee, downtimeUntil });

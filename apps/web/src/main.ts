@@ -108,6 +108,7 @@ type Plot = {
     completedAt: number | null;
     skippedAt: number | null;
     protectionUntil: number;
+    recovery: { firstCustomerAssistUsed: boolean; freeTutorialRelocationUsed: boolean };
     elapsedMinutes: number;
     guide: { milestoneId: string; title: string; prompt: string; actionLabel: string; target: string; recovery: string; overdue: boolean } | null;
     milestones: { id: string; targetMinute: number; xp: number; label: string; required: boolean; achievedAt: number | null }[];
