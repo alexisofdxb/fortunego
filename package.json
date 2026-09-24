@@ -10,6 +10,7 @@
     "simulate:performance": "pnpm --filter @plotgo/api exec tsx ../../scripts/simulate_performance.ts",
     "build": "pnpm -r build",
     "test:balance": "pnpm --filter @plotgo/api exec tsx ../../scripts/balance_regression.ts",
+    "test:onboarding": "pnpm --filter @plotgo/api exec tsx ../../scripts/onboarding_acceptance.ts",
     "db:push": "pnpm --filter @plotgo/api db:push"
   },
   "packageManager": "pnpm@10.17.0",

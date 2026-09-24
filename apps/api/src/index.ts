@@ -1927,7 +1927,7 @@ app.post("/api/session/settle", async (c) => {
   const onboarding = onboardingRow(id);
   const onboardingElapsedMs = onboarding?.onboardingStartedAt == null ? 0 : Date.now() - onboarding.onboardingStartedAt;
   const firstCustomerMissing = !onboardingMilestoneRows(id).some((milestone) => milestone.milestoneId === "onboarding_first_customer");
-  if (result.population <= 0 && activeBoard.length > 0 && onboarding?.onboardingStatus === "active" && onboarding.firstCustomerAssistUsed === 0 && firstCustomerMissing && onboardingElapsedMs >= 2 * 60_000) {
+  if ((result.population <= 0 || result.transactions <= 0) && activeBoard.length > 0 && onboarding?.onboardingStatus === "active" && onboarding.firstCustomerAssistUsed === 0 && firstCustomerMissing && onboardingElapsedMs >= 2 * 60_000) {
     const capacityBeforeAssist = activeBoard.reduce((sum, card) => sum + Math.max(1, CARDS[resolveType(card.type)]?.customersBase ?? 1), 0);
     if (capacityBeforeAssist > 0 && claimTutorialRecovery(id, "first_customer_assist", 0, { reason: "first_customer_demand_sla", elapsedMinutes: Number((onboardingElapsedMs / 60_000).toFixed(2)) })) {
       const assistedEvent = { ...activeEvent, populationBps: Math.max(activeEvent.populationBps, 10_000) };
@@ -2160,19 +2160,19 @@ app.post("/api/plot/move", async (c) => {
   const body = Move.parse(await c.req.json());
   const card = p.board.find((x) => x.id === body.cardId);
   if (!card) return c.json({ error: "missing card" }, 404);
+  const now = Date.now();
+  const tutorialCorrection = tutorialRelocationAvailable(id, p.board, now) &&
+    (card.type === "cash_kiosk" || card.type === "savings_stand");
   const day = utcDay();
   const dayData = districtDay(id, day);
   const eventLock = eventMoveLock(card, dayData.event.id);
-  if (eventLock) return c.json({ error: eventLock }, 409);
+  if (eventLock && !tutorialCorrection) return c.json({ error: eventLock }, 409);
   if (card.operationalUntil && card.operationalUntil > Date.now()) return c.json({ error: "Building is still in relocation downtime" }, 409);
   const orientation = (body.orientation ?? card.orientation ?? 0) as Orientation;
   if (!fits(p.board, card.type, body.x, body.y, card.id, 12, orientation)) {
     return c.json({ error: "Does not fit" }, 400);
   }
-  const now = Date.now();
   const freeWindow = !card.placedAt || now - card.placedAt < 24 * 3_600_000;
-  const tutorialCorrection = tutorialRelocationAvailable(id, p.board, now) &&
-    (card.type === "cash_kiosk" || card.type === "savings_stand");
   const normalFee = freeWindow ? 0 : Math.round(buildValueMinor(card) * 0.05);
   const fee = tutorialCorrection ? 0 : normalFee;
   if (p.cashMinor < fee) return c.json({ error: "Not enough Cash for relocation fee" }, 400);
@@ -2202,15 +2202,15 @@ app.post("/api/plot/rotate", async (c) => {
   const card = p.board.find((x) => x.id === body.cardId);
   if (!card) return c.json({ error: "missing card" }, 404);
   if (card.orientation === body.orientation) return c.json(await snapshot(id));
-  // Rotation follows the same authoritative relocation rules as a move.
-  const eventLock = eventMoveLock(card, districtDay(id, utcDay()).event.id);
-  if (eventLock) return c.json({ error: eventLock }, 409);
-  if (card.operationalUntil && card.operationalUntil > Date.now()) return c.json({ error: "Building is still in relocation downtime" }, 409);
-  if (!fits(p.board, card.type, card.x, card.y, card.id, 12, body.orientation)) return c.json({ error: "Rotated footprint does not fit" }, 400);
   const now = Date.now();
-  const freeWindow = !card.placedAt || now - card.placedAt < 24 * 3_600_000;
   const tutorialCorrection = tutorialRelocationAvailable(id, p.board, now) &&
     (card.type === "cash_kiosk" || card.type === "savings_stand");
+  // Rotation follows the same authoritative relocation rules as a move.
+  const eventLock = eventMoveLock(card, districtDay(id, utcDay()).event.id);
+  if (eventLock && !tutorialCorrection) return c.json({ error: eventLock }, 409);
+  if (card.operationalUntil && card.operationalUntil > Date.now()) return c.json({ error: "Building is still in relocation downtime" }, 409);
+  if (!fits(p.board, card.type, card.x, card.y, card.id, 12, body.orientation)) return c.json({ error: "Rotated footprint does not fit" }, 400);
+  const freeWindow = !card.placedAt || now - card.placedAt < 24 * 3_600_000;
   const normalFee = freeWindow ? 0 : Math.round(buildValueMinor(card) * 0.05);
   const fee = tutorialCorrection ? 0 : normalFee;
   if (p.cashMinor < fee) return c.json({ error: "Not enough Cash for relocation fee" }, 400);
