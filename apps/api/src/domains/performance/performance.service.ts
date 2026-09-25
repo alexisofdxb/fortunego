@@ -141,7 +141,13 @@ export async function upsertWeeklySessionPerformance(
   result: { volumeMinor: number; earnedDeltaMinor: number; population: number; capacity: number; reputationBps: number; riskBps: number; revenue: { amountMinor: number }[] },
 ) {
   const utilizationBps = result.capacity > 0 ? result.population / result.capacity * 10_000 : 0;
-  const revenueMinor = result.revenue.reduce((sum, line) => sum + Math.max(0, line.amountMinor), 0);
+  // Doc Performance Handoff anti-dominance rule: no single building may contribute
+  // more than 60% of a day's revenue to the SCORE. The excess is excluded from
+  // the weekly revenue component only — Cash and ledgers are never touched.
+  const revenueLines = result.revenue.map((line) => Math.max(0, line.amountMinor));
+  const grossRevenue = revenueLines.reduce((sum, line) => sum + line, 0);
+  const dominanceCap = grossRevenue * 0.6;
+  const revenueMinor = grossRevenue <= 0 ? 0 : revenueLines.reduce((sum, line) => sum + Math.min(line, dominanceCap), 0);
   await db.$executeRaw`
     INSERT INTO weekly_performance
       ("playerId", week, stage, "activeDays", "activityMinor", "revenueMinor", "activeCustomersTotal", "customerSamples", "newRetainedCustomers", "utilizationBpsTotal", "reputationBpsTotal", "riskBpsTotal", "eventPoints", sessions)

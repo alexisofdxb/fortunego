@@ -1,10 +1,17 @@
-import { utcDay } from "@plotgo/game";
+import { isoWeek, utcDay } from "@plotgo/game";
 import { prisma } from "../postgres/client";
 import { loadCards, loadFrags } from "../../domains/plot/board.service";
 import { activePlayerEvents } from "../../domains/events/events.service";
 import { ensureMarketCycle } from "../../domains/events/market-cycle.service";
 import { resolveCraftJobs } from "../../domains/modules/modules.service";
 import { ensureMarketHunts } from "../../shared/snapshot";
+import { runDailyReset } from "../../shared/retention";
+import {
+  dispatchDueNotifications,
+  produceEventStartAlerts,
+  produceHuntExpiryAlerts,
+  produceWeeklyCountdownAlerts,
+} from "../../domains/notifications/notifications.service";
 
 /**
  * In-process scheduler — local stand-in for the deferred Redis/BullMQ workers
@@ -62,6 +69,35 @@ async function expirySweep() {
     distinct: ["playerId"],
   });
   for (const row of eventPlayers) await activePlayerEvents(row.playerId);
+  await produceHuntExpiryAlerts(now);
+}
+
+/**
+ * Daily 00:00 UTC retention reset (spec sheets 10/14): finalize the previous
+ * day's active-day eligibility, expire stale offers/objectives, spawn the 3
+ * hunt offers + 3 business objectives, and move the prior week into
+ * settlement "pending". Idempotent (per-day checkpoint + per-player flags).
+ */
+async function dailyResetJob() {
+  await runDailyReset();
+}
+
+/**
+ * Hourly during the final 24h of the week: week_24h/week_6h close reminders
+ * and announced major-event start alerts (frequency-capped by dedupeKey).
+ * The countdown/eligibility read model itself is computed on read in the
+ * GET /api/performance response — no stored table (spec sheet 14).
+ */
+async function weeklyCountdownJob() {
+  const now = Date.now();
+  const week = isoWeek(new Date(now));
+  await produceWeeklyCountdownAlerts(week, now);
+  await produceEventStartAlerts(week, now);
+}
+
+/** Every minute: flip eligible pending notifications to sent (in-app inbox). */
+async function notificationDispatchJob() {
+  await dispatchDueNotifications();
 }
 
 /** Every 60 min: market cycle transition check (lazy ensure flips due cycles). */
@@ -119,7 +155,13 @@ const jobs: Job[] = [
   { name: "expiry_sweep", nextDelayMs: () => jitter(5 * 60_000), run: expirySweep },
   { name: "market_cycle", nextDelayMs: () => jitter(60 * 60_000), run: marketCycleCheck },
   { name: "inventory_reconcile", nextDelayMs: (now) => msUntilNextUtcMidnight(now), run: inventoryReconcile },
+  { name: "daily_reset", nextDelayMs: (now) => msUntilNextUtcMidnight(now), run: dailyResetJob },
+  { name: "weekly_countdown", nextDelayMs: () => jitter(60 * 60_000), run: weeklyCountdownJob },
+  { name: "notification_dispatch", nextDelayMs: () => jitter(60_000), run: notificationDispatchJob },
 ];
+
+// Daily jobs are guarded on the UTC day so a jittered re-fire stays idempotent.
+const DAILY_JOBS = new Set(["inventory_reconcile", "daily_reset"]);
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 let started = false;
@@ -130,8 +172,7 @@ async function tick(job: Job): Promise<void> {
   // Schedule the next tick first so a slow/failing run does not stall the cadence.
   timers.set(job.name, setTimeout(() => void tick(job), job.nextDelayMs(Date.now())));
   const day = utcDay();
-  // Daily jobs are guarded on the UTC day so a jittered re-fire stays idempotent.
-  if (job.name === "inventory_reconcile" && lastRunDay.get(job.name) === day) return;
+  if (DAILY_JOBS.has(job.name) && lastRunDay.get(job.name) === day) return;
   console.debug(`[scheduler] ${job.name} start`);
   try {
     await job.run();
@@ -149,6 +190,21 @@ export function startScheduler(): void {
     timers.set(job.name, setTimeout(() => void tick(job), job.nextDelayMs(Date.now())));
   }
   console.debug("[scheduler] started");
+  // Boot catch-up: if the daily reset checkpoint is not today (missed 00:00
+  // UTC, e.g. the worker was down), run it once now. The job is idempotent.
+  void (async () => {
+    try {
+      const today = utcDay();
+      const checkpoint = await prisma.plotgoJobCheckpoint.findUnique({ where: { jobId: "daily_reset" } });
+      if (checkpoint?.day !== today) {
+        console.debug("[scheduler] daily_reset catch-up on boot");
+        await runDailyReset();
+        lastRunDay.set("daily_reset", today);
+      }
+    } catch (error) {
+      console.error("[scheduler] daily_reset catch-up failed", error);
+    }
+  })();
 }
 
 export function stopScheduler(): void {

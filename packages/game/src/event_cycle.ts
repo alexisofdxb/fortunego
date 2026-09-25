@@ -1,4 +1,5 @@
 import { MARKET_STAGES, type MarketStage } from "./market_phase3.ts";
+import { ECONOMIC_EVENTS, averageSegmentDemand, type EconomicEvent, type EconomicEventFamily } from "./economic_events.ts";
 
 export type EventCategory = "Customer" | "Market" | "Operational" | "Macro" | "Corporate" | "Risk/Crisis" | "Sector" | "Prestige/Seasonal";
 export type EventTone = "Positive" | "Mixed" | "Negative";
@@ -27,7 +28,7 @@ export const MARKET_CYCLE_RULES: readonly MarketCycleRule[] = [
   { state: "Correction", weeklyProbability: 0.12, typicalDurationHours: [24, 72], demandMultiplier: 0.92, activityMultiplier: 1.05, revenueMultiplier: 0.90, riskMultiplier: 1.22, huntBias: "Volatility, risk, liquidity", stockBias: "High-beta / broad" },
   { state: "Crisis", weeklyProbability: 0.05, typicalDurationHours: [12, 36], demandMultiplier: 0.82, activityMultiplier: 0.88, revenueMultiplier: 0.78, riskMultiplier: 1.40, huntBias: "Risk, treasury, liquidity", stockBias: "Scarce / event pool" },
   { state: "Recovery", weeklyProbability: 0.11, typicalDurationHours: [24, 96], demandMultiplier: 1.08, activityMultiplier: 1.12, revenueMultiplier: 1.10, riskMultiplier: 0.95, huntBias: "Growth after drawdown", stockBias: "Broad / tech" },
-] as const;
+];
 
 export const MARKET_CYCLE_TRANSITIONS: Record<MarketCycleState, Record<MarketCycleState, number>> = {
   "Expansion": { "Expansion": 0.35, "Bull Market": 0.25, Neutral: 0.20, "Risk-Off": 0.08, Correction: 0.05, Crisis: 0.01, Recovery: 0.06 },
@@ -58,52 +59,56 @@ export type CatalogEvent = {
   playerChoice: boolean;
 };
 
-const e = (id: string, event: string, category: EventCategory, tone: EventTone, minStage: MarketStage, scope: EventScope, durationHours: number, baseSpawnWeight: number, demand: number, activity: number, revenue: number, risk: number, rep: number, hunt: number, stockBias: string, playerChoice: boolean): CatalogEvent => ({
-  id, event, category, tone, minStage, scope, durationHours, baseSpawnWeight, demandBps: Math.round(demand * 10_000), activityBps: Math.round(activity * 10_000), revenueBps: Math.round(revenue * 10_000), riskBps: Math.round(risk * 10_000), reputationDeltaMax: rep, huntSpawnMultiplier: hunt, stockBias, playerChoice,
-});
+/** Plan §1.4 category/tone/minStage mapping + closest-equivalent spawn weights, hunt multipliers and stock biases carried over from the retired 40-event catalog. */
+type FamilyMeta = {
+  category: EventCategory;
+  tone: EventTone;
+  minStage: MarketStage;
+  scope: EventScope;
+  baseSpawnWeight: number;
+  huntSpawnMultiplier: number;
+  stockBias: string;
+  playerChoice: boolean;
+  reputationDeltaMax: number;
+};
 
-export const EVENT_CATALOG: readonly CatalogEvent[] = [
-  e("retail_investor_rush", "Retail Investor Rush", "Customer", "Positive", "humble", "Global", 24, 8, .18, .15, .10, 0, 1, 1.20, "AAPL,TSLA,AMZN", false),
-  e("savings_campaign", "Savings Campaign", "Customer", "Positive", "humble", "Personal", 24, 6, .15, .05, .08, -.05, 1, 1.10, "SPY,MSFT", true),
-  e("local_business_boom", "Local Business Boom", "Customer", "Positive", "humble", "Global", 36, 5, .12, .12, .10, 0, 1, 1.10, "AMZN,SPY", false),
-  e("currency_volatility", "Currency Volatility", "Market", "Mixed", "humble", "Global", 18, 5, .02, .18, .08, .12, 0, 1.15, "Broad", true),
-  e("consumer_slowdown", "Consumer Slowdown", "Customer", "Negative", "humble", "Global", 24, 4, -.12, -.08, -.10, .08, -1, .90, "SPY", true),
-  e("trading_frenzy", "Trading Frenzy", "Market", "Positive", "humble", "Global", 12, 6, .08, .25, .18, .08, 1, 1.25, "TSLA,NVDA", false),
-  e("service_backlog", "Service Backlog", "Operational", "Negative", "humble", "Personal", 8, 5, -.05, -.12, -.08, .10, -2, .85, "Broad", true),
-  e("community_trust_boost", "Community Trust Boost", "Customer", "Positive", "humble", "Personal", 24, 4, .10, .05, .05, -.05, 3, 1.05, "Broad", false),
-  e("rate_cut", "Rate Cut", "Macro", "Mixed", "starter", "Global", 48, 7, .12, .08, .04, -.02, 1, 1.20, "SPY,MSFT,AAPL", true),
-  e("rate_hike", "Rate Hike", "Macro", "Mixed", "starter", "Global", 48, 6, -.06, -.04, .05, .08, 0, 1.15, "SPY", true),
-  e("earnings_week", "Earnings Week", "Corporate", "Positive", "starter", "Global", 48, 8, .08, .16, .12, .06, 1, 1.30, "Event tickers", false),
-  e("dividend_week", "Dividend Week", "Corporate", "Positive", "starter", "Global", 72, 5, .10, .06, .05, -.05, 1, 1.15, "SPY,AAPL,MSFT", false),
-  e("brokerage_fee_war", "Brokerage Fee War", "Market", "Mixed", "starter", "Personal", 24, 5, .15, .20, -.10, .02, 0, 1.15, "AAPL,AMZN", true),
-  e("loan_demand_surge", "Loan Demand Surge", "Customer", "Positive", "starter", "Global", 36, 6, .16, .10, .12, .10, 1, 1.10, "SPY,AMZN", true),
-  e("credit_quality_deterioration", "Credit Quality Deterioration", "Risk/Crisis", "Negative", "starter", "Personal", 24, 4, -.08, -.05, -.12, .20, -2, .90, "SPY", true),
-  e("research_breakthrough", "Research Breakthrough", "Sector", "Positive", "starter", "Personal", 24, 5, .04, .12, .08, -.03, 2, 1.25, "NVDA,MSFT,GOOGL", false),
-  e("system_outage", "System Outage", "Operational", "Negative", "starter", "Personal", 6, 3, -.08, -.22, -.18, .15, -3, .70, "Broad", true),
-  e("insurance_claim_wave", "Insurance Claim Wave", "Operational", "Negative", "starter", "Personal", 18, 4, -.04, -.05, -.15, .18, -2, .90, "SPY", true),
-  e("ai_mania", "AI Mania", "Sector", "Positive", "growing", "Global", 36, 7, .10, .20, .16, .10, 1, 1.35, "NVDA,MSFT,GOOGL,META", false),
-  e("tech_selloff", "Tech Selloff", "Sector", "Negative", "growing", "Global", 24, 5, -.04, .15, -.12, .20, 0, 1.25, "NVDA,TSLA,GOOGL", true),
-  e("liquidity_boom", "Liquidity Boom", "Market", "Positive", "growing", "Global", 36, 6, .08, .18, .14, -.05, 1, 1.25, "COIN,SPY", false),
-  e("liquidity_crunch", "Liquidity Crunch", "Risk/Crisis", "Negative", "growing", "Global", 24, 4, -.12, -.10, -.16, .28, -2, 1.20, "COIN,SPY", true),
-  e("sme_growth_wave", "SME Growth Wave", "Customer", "Positive", "growing", "Global", 48, 6, .16, .10, .12, .05, 1, 1.10, "AMZN,SPY", false),
-  e("cybersecurity_scare", "Cybersecurity Scare", "Operational", "Negative", "growing", "Personal", 12, 4, -.06, -.15, -.12, .20, -3, .90, "Broad", true),
-  e("fund_inflow_surge", "Fund Inflow Surge", "Customer", "Positive", "growing", "Global", 36, 6, .12, .14, .13, .04, 1, 1.20, "SPY,MSFT,NVDA", false),
-  e("portfolio_drawdown", "Portfolio Drawdown", "Market", "Negative", "growing", "Personal", 24, 5, -.05, .08, -.14, .18, -1, 1.15, "Broad", true),
-  e("ipo_week", "IPO Week", "Corporate", "Positive", "established", "Global", 72, 6, .12, .18, .15, .08, 2, 1.35, "Event basket", true),
-  e("ma_boom", "M&A Boom", "Corporate", "Positive", "established", "Global", 48, 5, .10, .15, .14, .08, 2, 1.25, "SPY,MSFT", false),
-  e("institutional_flow", "Institutional Flow", "Customer", "Positive", "established", "Global", 48, 6, .12, .16, .14, .02, 2, 1.25, "SPY,MSFT", false),
-  e("regulatory_review", "Regulatory Review", "Macro", "Mixed", "established", "Personal", 36, 4, -.05, -.08, -.05, .12, -1, 1.00, "Broad", true),
-  e("bank_run_rumor", "Bank Run Rumor", "Risk/Crisis", "Negative", "established", "Personal", 18, 3, -.18, -.12, -.18, .32, -4, 1.10, "SPY", true),
-  e("market_maker_dislocation", "Market Maker Dislocation", "Risk/Crisis", "Negative", "established", "Personal", 12, 3, -.08, .12, -.15, .28, -2, 1.25, "COIN,TSLA", true),
-  e("private_wealth_influx", "Private Wealth Influx", "Customer", "Positive", "established", "Global", 36, 5, .15, .10, .13, -.02, 2, 1.15, "AAPL,MSFT,SPY", false),
-  e("institutional_reputation_review", "Institutional Reputation Review", "Operational", "Mixed", "established", "Personal", 24, 4, 0, 0, 0, .05, 4, 1.00, "Broad", true),
-  e("global_trading_boom", "Global Trading Boom", "Market", "Positive", "elite", "Global", 48, 5, .10, .28, .20, .12, 2, 1.40, "COIN,NVDA,TSLA", false),
-  e("sovereign_allocation", "Sovereign Allocation", "Corporate", "Positive", "elite", "Global", 72, 4, .12, .14, .16, .02, 3, 1.25, "SPY,MSFT", true),
-  e("systemic_stress_test", "Systemic Stress Test", "Risk/Crisis", "Mixed", "elite", "Personal", 36, 3, -.08, -.06, -.08, .25, 4, 1.10, "Broad", true),
-  e("global_credit_shock", "Global Credit Shock", "Risk/Crisis", "Negative", "tycoon", "Global", 36, 2, -.18, -.14, -.22, .35, -4, 1.25, "SPY,COIN", true),
-  e("world_market_week", "World Market Week", "Prestige/Seasonal", "Positive", "tycoon", "Global", 72, 3, .15, .25, .22, .10, 4, 1.50, "Broad", true),
-  e("financial_summit", "Financial Summit", "Prestige/Seasonal", "Positive", "established", "Global", 48, 4, .10, .12, .10, -.03, 3, 1.20, "Broad", true),
-] as const;
+const FAMILY_META: Record<EconomicEventFamily, FamilyMeta> = {
+  bull_market: { category: "Market", tone: "Positive", minStage: "humble", scope: "Global", baseSpawnWeight: 6, huntSpawnMultiplier: 1.25, stockBias: "TSLA,NVDA", playerChoice: false, reputationDeltaMax: 1 },
+  tech_rally: { category: "Sector", tone: "Positive", minStage: "growing", scope: "Global", baseSpawnWeight: 7, huntSpawnMultiplier: 1.35, stockBias: "NVDA,MSFT,GOOGL,META", playerChoice: false, reputationDeltaMax: 1 },
+  dividend_week: { category: "Market", tone: "Positive", minStage: "starter", scope: "Global", baseSpawnWeight: 5, huntSpawnMultiplier: 1.15, stockBias: "SPY,AAPL,MSFT", playerChoice: false, reputationDeltaMax: 1 },
+  rate_cut: { category: "Macro", tone: "Positive", minStage: "starter", scope: "Personal", baseSpawnWeight: 7, huntSpawnMultiplier: 1.20, stockBias: "SPY,MSFT,AAPL", playerChoice: true, reputationDeltaMax: 1 },
+  rate_hike: { category: "Macro", tone: "Mixed", minStage: "starter", scope: "Personal", baseSpawnWeight: 6, huntSpawnMultiplier: 1.15, stockBias: "SPY", playerChoice: true, reputationDeltaMax: 0 },
+  credit_boom: { category: "Macro", tone: "Positive", minStage: "starter", scope: "Global", baseSpawnWeight: 6, huntSpawnMultiplier: 1.10, stockBias: "SPY,AMZN", playerChoice: true, reputationDeltaMax: 1 },
+  recession: { category: "Macro", tone: "Negative", minStage: "established", scope: "Personal", baseSpawnWeight: 4, huntSpawnMultiplier: 0.90, stockBias: "SPY", playerChoice: true, reputationDeltaMax: -3 },
+  liquidity_crunch: { category: "Risk/Crisis", tone: "Negative", minStage: "growing", scope: "Personal", baseSpawnWeight: 4, huntSpawnMultiplier: 1.20, stockBias: "COIN,SPY", playerChoice: true, reputationDeltaMax: -2 },
+  bank_run: { category: "Risk/Crisis", tone: "Negative", minStage: "established", scope: "Personal", baseSpawnWeight: 3, huntSpawnMultiplier: 1.10, stockBias: "SPY", playerChoice: true, reputationDeltaMax: -4 },
+  market_correction: { category: "Risk/Crisis", tone: "Negative", minStage: "growing", scope: "Personal", baseSpawnWeight: 5, huntSpawnMultiplier: 1.25, stockBias: "SPY,TSLA,COIN", playerChoice: true, reputationDeltaMax: -2 },
+  earnings_season: { category: "Corporate", tone: "Positive", minStage: "starter", scope: "Global", baseSpawnWeight: 8, huntSpawnMultiplier: 1.30, stockBias: "Event tickers", playerChoice: false, reputationDeltaMax: 1 },
+  ipo_week: { category: "Corporate", tone: "Positive", minStage: "established", scope: "Global", baseSpawnWeight: 6, huntSpawnMultiplier: 1.35, stockBias: "Event basket", playerChoice: true, reputationDeltaMax: 2 },
+};
+
+/** The 12 economic event families are the ONLY event catalog (plan §1.4). */
+export const EVENT_CATALOG: readonly CatalogEvent[] = ECONOMIC_EVENTS.map((event: EconomicEvent) => {
+  const meta = FAMILY_META[event.id];
+  return {
+    id: event.id,
+    event: event.name,
+    category: meta.category,
+    tone: meta.tone,
+    minStage: meta.minStage,
+    scope: meta.scope,
+    durationHours: event.durationHours,
+    baseSpawnWeight: meta.baseSpawnWeight,
+    demandBps: Math.round((averageSegmentDemand(event) - 1) * 10_000),
+    activityBps: Math.round((event.activityMod - 1) * 10_000),
+    revenueBps: Math.round((event.revenueMod - 1) * 10_000),
+    riskBps: Math.round((event.riskMod - 1) * 10_000),
+    reputationDeltaMax: meta.reputationDeltaMax,
+    huntSpawnMultiplier: meta.huntSpawnMultiplier,
+    stockBias: meta.stockBias,
+    playerChoice: meta.playerChoice,
+  };
+});
 
 export const BUILDING_EVENT_SENSITIVITY: Record<string, Record<EventCategory, number>> = {
   banking: { Macro: 1.15, Market: .80, Sector: .40, Customer: 1.20, Operational: .85, "Risk/Crisis": 1.30, Corporate: .80, "Prestige/Seasonal": .70 },
@@ -121,41 +126,43 @@ export const BUILDING_EVENT_SENSITIVITY: Record<string, Record<EventCategory, nu
 export type EventDecision = { id: string; eventId: string; choice: string; immediateCostMinor: number; modifier: EventModifier; durationHours: number; successCondition: string; failureConsequence: string; cashRewardMinor: number; eventPoints: number; tradeoff: string };
 const d = (id: string, eventId: string, choice: string, cost: number, demand: number, activity: number, revenue: number, risk: number, rep: number, durationHours: number, successCondition: string, failureConsequence: string, cashReward: number, points: number, tradeoff: string): EventDecision => ({ id, eventId, choice, immediateCostMinor: cost * 100, modifier: { demandBps: demand * 10_000, activityBps: activity * 10_000, revenueBps: revenue * 10_000, riskBps: risk * 10_000, huntSpawnBps: 0, reputationDelta: rep }, durationHours, successCondition, failureConsequence, cashRewardMinor: cashReward * 100, eventPoints: points, tradeoff });
 
+/** Re-authored onto the 12 families (≥1 per family, same 18-decision shape). */
 export const EVENT_DECISIONS: readonly EventDecision[] = [
-  d("crunch_inject_reserves", "liquidity_crunch", "Inject reserves", 50_000, 0, 0, -.05, -.18, 2, 24, "Have Treasury/Vault or enough Cash", "None beyond cost", 0, 4, "Spend Cash to protect empire"),
-  d("crunch_limit_activity", "liquidity_crunch", "Limit activity", 0, -.05, -.20, -.12, -.12, 1, 24, "Accept lower throughput", "Lower revenue", 0, 3, "Safety vs activity"),
-  d("crunch_operate_normally", "liquidity_crunch", "Operate normally", 0, -.10, .05, .05, .15, -2, 24, "Risk event does not trigger", "Extra rep loss + temporary capacity hit", 15_000, 5, "Upside vs downside"),
-  d("hike_raise_rates", "rate_hike", "Raise lending rates", 0, -.08, -.05, .10, .08, -1, 48, "Maintain retention >85%", "Customer churn", 5_000, 3, "Margin vs growth"),
-  d("hike_hold_rates", "rate_hike", "Hold customer rates", 0, .04, .03, -.05, -.02, 2, 48, "Maintain liquidity", "Lower profit", 0, 4, "Loyalty vs margin"),
-  d("fee_cut", "brokerage_fee_war", "Cut fees", 10_000, 0, .18, -.15, .02, 1, 24, "Volume target met", "Cash loss without volume", 10_000, 4, "Acquire customers vs margin"),
-  d("fee_keep", "brokerage_fee_war", "Keep fees", 0, -.05, -.08, .05, 0, 0, 24, "Retention stays healthy", "Lose market share", 0, 2, "Margin vs share"),
-  d("outage_repair", "system_outage", "Emergency repair", 25_000, 0, -.05, -.05, -.12, 1, 6, "Pay cost", "None", 0, 4, "Cash vs uptime"),
-  d("outage_degraded", "system_outage", "Run degraded", 0, -.05, -.18, -.12, .08, -2, 6, "No secondary failure", "Rep/capacity hit", 5_000, 2, "Save Cash vs service quality"),
-  d("rumor_reassure", "bank_run_rumor", "Public reassurance", 15_000, -.04, -.05, -.08, -.10, 3, 18, "Reputation >=75", "If low reputation, effect halved", 0, 5, "Trust investment"),
-  d("rumor_reserve", "bank_run_rumor", "Increase liquidity reserve", 50_000, -.02, -.10, -.10, -.20, 2, 18, "Reserve requirement met", "None", 0, 5, "Liquidity vs earnings"),
-  d("rumor_ignore", "bank_run_rumor", "Ignore rumor", 0, -.15, -.05, .03, .20, -4, 18, "Rumor fades", "Customer outflow", 20_000, 4, "Bet on normalization"),
-  d("review_full_audit", "regulatory_review", "Full compliance audit", 40_000, -.02, -.08, -.10, -.15, 4, 36, "Complete audit", "None", 0, 6, "Cost vs reputation"),
-  d("review_minimal", "regulatory_review", "Minimal response", 5_000, -.05, -.03, .02, .12, -2, 36, "No escalation", "Rep loss / temporary restriction", 10_000, 2, "Short-term profit vs long-term trust"),
-  d("selloff_reduce", "tech_selloff", "Reduce exposure", 10_000, 0, -.08, -.05, -.15, 1, 24, "Research building active", "Miss rebound bonus", 0, 4, "Protection vs upside"),
-  d("selloff_buy", "tech_selloff", "Buy the dip", 25_000, .02, .12, .08, .15, 0, 24, "Recovery occurs", "Temporary drawdown", 25_000, 6, "Contrarian risk"),
-  d("shock_tighten", "global_credit_shock", "Tighten lending", 0, -.12, -.15, -.08, -.20, 2, 36, "Credit losses stay below threshold", "Lower growth", 0, 7, "Preservation vs expansion"),
-  d("shock_maintain", "global_credit_shock", "Maintain lending", 0, -.05, .04, .05, .20, -2, 36, "Defaults stay controlled", "Large loss + rep hit", 40_000, 8, "Performance vs systemic risk"),
+  d("bull_ride_momentum", "bull_market", "Ride the momentum", 10_000, .05, .12, .08, .10, 0, 24, "Trading volume target met", "Drawdown if momentum reverses", 25_000, 6, "Upside vs reversal risk"),
+  d("bull_take_profits", "bull_market", "Take profits early", 0, -.04, -.08, .02, -.12, 1, 24, "Any", "Miss part of the rally", 10_000, 3, "Safety vs upside"),
+  d("correction_reduce_exposure", "market_correction", "Reduce exposure", 10_000, 0, -.08, -.05, -.15, 1, 12, "Research building active", "Miss rebound bonus", 0, 4, "Protection vs upside"),
+  d("correction_buy_dip", "market_correction", "Buy the dip", 25_000, .02, .12, .08, .15, 0, 12, "Recovery occurs", "Temporary drawdown", 25_000, 6, "Contrarian risk"),
+  d("earnings_publish_research", "earnings_season", "Publish research notes", 5_000, .03, .10, .05, .02, 1, 48, "Brokerage or research building active", "Spend without lift", 15_000, 4, "Spend to capture attention"),
+  d("ipo_join_syndicate", "ipo_week", "Join the IPO syndicate", 40_000, .05, .12, .10, .08, 2, 72, "Corporate or institutional building active", "Fees without allocation", 30_000, 6, "Fees vs allocation"),
+  d("ratecut_expand_credit", "rate_cut", "Expand lending book", 0, .10, .06, .06, .06, 1, 24, "Bank or lending building active", "Credit risk builds", 10_000, 4, "Growth vs risk"),
+  d("hike_raise_rates", "rate_hike", "Raise lending rates", 0, -.08, -.05, .10, .08, -1, 24, "Maintain retention >85%", "Customer churn", 5_000, 3, "Margin vs growth"),
+  d("hike_hold_rates", "rate_hike", "Hold customer rates", 0, .04, .03, -.05, -.02, 2, 24, "Maintain liquidity", "Lower profit", 0, 4, "Loyalty vs margin"),
+  d("crunch_inject_reserves", "liquidity_crunch", "Inject reserves", 50_000, 0, 0, -.05, -.18, 2, 12, "Have Treasury/Vault or enough Cash", "None beyond cost", 0, 4, "Spend Cash to protect empire"),
+  d("crunch_limit_activity", "liquidity_crunch", "Limit activity", 0, -.05, -.20, -.12, -.12, 1, 12, "Accept lower throughput", "Lower revenue", 0, 3, "Safety vs activity"),
+  d("creditboom_expand_book", "credit_boom", "Expand the loan book", 0, .08, .08, .08, .10, 1, 48, "Lending building active", "Credit losses later", 15_000, 4, "Growth vs credit quality"),
+  d("bankrun_reassure", "bank_run", "Public reassurance", 15_000, -.04, -.05, -.08, -.10, 3, 8, "Reputation >=75", "If low reputation, effect halved", 0, 5, "Trust investment"),
+  d("bankrun_reserve", "bank_run", "Increase liquidity reserve", 50_000, -.02, -.10, -.10, -.20, 2, 8, "Reserve requirement met", "None", 0, 5, "Liquidity vs earnings"),
+  d("techrally_double_down", "tech_rally", "Double down on tech flow", 10_000, .04, .14, .08, .10, 1, 24, "Research or digital building active", "Crowded trade reverses", 20_000, 5, "Momentum vs crowding"),
+  d("recession_tighten", "recession", "Tighten operations", 0, -.12, -.15, -.08, -.20, 2, 72, "Credit losses stay below threshold", "Lower growth", 0, 7, "Preservation vs expansion"),
+  d("recession_maintain", "recession", "Maintain lending", 0, -.05, .04, .05, .20, -2, 72, "Defaults stay controlled", "Large loss + rep hit", 40_000, 8, "Performance vs systemic risk"),
+  d("dividend_reinvest", "dividend_week", "Reinvest distributions", 0, .02, .06, .04, 0, 1, 48, "Fund or wealth building active", "None", 10_000, 3, "Reinvestment vs Cash now"),
 ];
 
 export type EventMission = { id: string; mission: string; eventFamily: string; minStage: MarketStage; metric: string; baseTarget: number; timeLimitHours: number; cashRewardMinor: number; repReward: number; eventPoints: number; stockRewardBias: string; failurePenalty: string };
 const m = (id: string, mission: string, family: string, stage: MarketStage, metric: string, target: number, hours: number, cash: number, rep: number, points: number, stock: string, penalty = "None"): EventMission => ({ id, mission, eventFamily: family, minStage: stage, metric, baseTarget: target, timeLimitHours: hours, cashRewardMinor: cash * 100, repReward: rep, eventPoints: points, stockRewardBias: stock, failurePenalty: penalty });
 export const EVENT_MISSIONS: readonly EventMission[] = [
-  m("capture_the_rush", "Capture the Rush", "Positive Market", "humble", "New customers", 100, 24, 2500, 1, 2, "Broad"),
-  m("handle_peak_volume", "Handle Peak Volume", "Trading", "starter", "Transactions", 1000, 24, 5000, 1, 3, "TSLA,NVDA"),
-  m("protect_retention", "Protect Retention", "Customer Pressure", "starter", "Retention", .88, 24, 4000, 2, 3, "Broad", "-1 rep if <80%"),
-  m("maintain_liquidity", "Maintain Liquidity", "Risk", "growing", "Reserve ratio", .15, 24, 7500, 2, 4, "SPY", "Temporary risk +5%"),
-  m("recover_service", "Recover Service", "Operational", "starter", "Restore capacity", .90, 12, 5000, 2, 3, "Broad", "Revenue -5% extra"),
-  m("trade_the_volatility", "Trade the Volatility", "Market", "growing", "Trading volume", 500_000, 24, 10_000, 1, 4, "TSLA,COIN"),
-  m("fund_the_opportunity", "Fund the Opportunity", "Fund", "growing", "AUM inflow", 250_000, 36, 12_000, 2, 4, "SPY,NVDA"),
-  m("win_institutional_flow", "Win Institutional Flow", "Institutional", "established", "Institutional clients", 15, 48, 20_000, 3, 5, "SPY,MSFT"),
-  m("survive_the_crunch", "Survive the Crunch", "Risk/Crisis", "established", "Risk below threshold", .25, 24, 25_000, 4, 6, "SPY,COIN", "-3 rep if severe fail"),
+  m("trade_the_rally", "Trade the Rally", "Market", "growing", "Trading volume", 500_000, 24, 10_000, 1, 4, "TSLA,NVDA"),
+  m("dividend_collector", "Dividend Collector", "Market", "starter", "AUM inflow", 100_000, 48, 8_000, 1, 3, "SPY,AAPL,MSFT"),
+  m("capture_the_tech_rally", "Capture the Tech Rally", "Sector", "growing", "New customers", 250, 24, 7_500, 1, 3, "NVDA,MSFT"),
+  m("fund_the_opportunity", "Fund the Opportunity", "Macro", "growing", "AUM inflow", 250_000, 36, 12_000, 2, 4, "SPY,NVDA"),
+  m("protect_retention", "Protect Retention", "Macro", "starter", "Retention", .88, 24, 4_000, 2, 3, "Broad", "-1 rep if <80%"),
+  m("lend_into_the_boom", "Lend Into the Boom", "Macro", "starter", "Lending volume", 100_000, 36, 10_000, 2, 4, "SPY,AMZN"),
+  m("weather_the_recession", "Weather the Recession", "Macro", "established", "Composite health", .80, 72, 40_000, 5, 8, "Broad", "Prestige loss if failed"),
+  m("maintain_liquidity", "Maintain Liquidity", "Risk/Crisis", "growing", "Reserve ratio", .15, 24, 7_500, 2, 4, "SPY", "Temporary risk +5%"),
+  m("survive_the_correction", "Survive the Correction", "Risk/Crisis", "established", "Risk below threshold", .25, 24, 25_000, 4, 6, "SPY,COIN", "-3 rep if severe fail"),
+  m("hold_the_line", "Hold the Line", "Risk/Crisis", "established", "Retention", .85, 12, 20_000, 3, 6, "SPY", "-2 rep if failed"),
+  m("handle_peak_volume", "Handle Peak Volume", "Corporate", "starter", "Transactions", 1000, 48, 5_000, 1, 3, "Event tickers"),
   m("complete_the_ipo_book", "Complete the IPO Book", "Corporate", "established", "Corporate actions", 3, 72, 30_000, 3, 6, "Event basket"),
-  m("pass_the_stress_test", "Pass the Stress Test", "Risk/Crisis", "elite", "Composite health", .80, 36, 40_000, 5, 8, "Broad", "Prestige loss if failed"),
   m("world_market_leader", "World Market Leader", "Prestige", "tycoon", "Event activity score", 10_000_000, 72, 75_000, 5, 10, "Broad"),
 ];
 

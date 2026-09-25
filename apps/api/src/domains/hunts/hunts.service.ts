@@ -2,7 +2,7 @@ import {
   DIFFICULTY_RULES,
   MARKET_HUNTS,
   MARKET_STOCKS,
-  STAGE_RULES,
+  chooseDifficulty,
   eventEligible,
   marketStageIndex,
   type HuntDifficulty,
@@ -116,13 +116,16 @@ export type MarketHuntSlot = {
   status: "active" | "claimed" | "expired" | "cash_fallback";
   claimedAt: number | null;
   reservedMinor: number;
+  // Offer-board lifecycle: unstarted offers expire at the next UTC reset;
+  // started hunts keep their own real-time expiry (spec sheet 05).
+  started: boolean;
 };
 
 export function marketHuntRow(row: {
   id: string; playerId: string; issuedDay: string; week: string; templateId: string; difficulty: string; rewardRarity: string;
   stockTicker: string | null; rewardValueMinor: bigint; moduleRewardKind: string | null; moduleRewardRarity: string | null;
   moduleRewardModuleId: string | null; moduleRewardQuantity: number; moduleRewardParts: number; points: number; target: number;
-  issuedAt: bigint; expiresAt: bigint; status: string; claimedAt: bigint | null; reservedMinor: bigint;
+  issuedAt: bigint; expiresAt: bigint; status: string; claimedAt: bigint | null; reservedMinor: bigint; started: boolean;
 }): MarketHuntSlot {
   const moduleRewardKind = row.moduleRewardKind === "module" || row.moduleRewardKind === "parts" ? row.moduleRewardKind as ModuleReward["kind"] : null;
   const moduleReward = moduleRewardKind && row.moduleRewardRarity
@@ -154,6 +157,7 @@ export function marketHuntRow(row: {
     status: row.status as MarketHuntSlot["status"],
     claimedAt: row.claimedAt == null ? null : num(row.claimedAt),
     reservedMinor: num(row.reservedMinor),
+    started: row.started,
   };
 }
 
@@ -177,17 +181,9 @@ export function seedMix(seed: number, index: number): number {
   return value >>> 0;
 }
 
-export function chooseDifficulty(stage: MarketStage, seed: number): HuntDifficulty {
-  const rule = STAGE_RULES[stage];
-  const entries = Object.entries(rule.difficultyMix) as [HuntDifficulty, number][];
-  const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
-  let cursor = ((seed % 1_000_000) / 1_000_000) * total;
-  for (const [difficulty, weight] of entries) {
-    cursor -= weight;
-    if (cursor <= 0) return difficulty;
-  }
-  return "easy";
-}
+// Difficulty draw lives in @plotgo/game (single source of truth, shared with the
+// account-age rule); re-exported here for existing importers.
+export { chooseDifficulty };
 
 function canUseStock(stock: (typeof MARKET_STOCKS)[number], stage: MarketStage): boolean {
   return marketStageIndex(stock.unlockStage) <= marketStageIndex(stage);

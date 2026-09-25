@@ -1,10 +1,12 @@
 import {
-  BUILDING_LIST,
   calculatePerformanceScore,
   allocateWeeklyPayouts,
   eventForDay,
-  PERFORMANCE_STAGE_RULES,
+  fits,
   settleDistrict,
+  PERFORMANCE_STAGE_RULES,
+  CASH_SCALE,
+  type CustomerSegments,
   type MarketStage,
   type PerformanceMetrics,
   type PlacedCard,
@@ -12,16 +14,74 @@ import {
 
 const stages: MarketStage[] = ["humble", "starter", "growing", "established", "elite", "tycoon"];
 const stageLevel: Record<MarketStage, number> = { humble: 5, starter: 15, growing: 25, established: 35, elite: 43, tycoon: 48 };
+
+// Doc Stage Scenarios building lists (PLOT_Customer_Economic_Simulation_v0.1),
+// upgraded so the empire level (Σ 1 + stage−1) lands in the stage band, and
+// placed LEGALLY on the 12x12 board via fits() — the old version overlapped
+// footprints and inflated targets past capacity.
+const STAGE_BOARDS: Record<MarketStage, { type: string; stage: 1 | 2 | 3 }[]> = {
+  humble: [
+    { type: "cash_kiosk", stage: 1 }, { type: "trading_booth", stage: 1 },
+    { type: "savings_stand", stage: 1 }, { type: "mini_brokerage", stage: 1 },
+    { type: "market_info", stage: 1 },
+  ],
+  starter: [
+    { type: "neighborhood_shop", stage: 2 }, { type: "small_brokerage", stage: 2 },
+    { type: "local_savings", stage: 2 }, { type: "microfinance", stage: 2 },
+    { type: "trading_room", stage: 2 }, { type: "small_research", stage: 2 },
+    { type: "small_fund", stage: 2 }, { type: "services_hub", stage: 1 },
+  ],
+  growing: [
+    { type: "community_bank", stage: 3 }, { type: "brokerage_house", stage: 3 },
+    { type: "advisory_firm", stage: 3 }, { type: "asset_office", stage: 3 },
+    { type: "research_center", stage: 3 }, { type: "lending_center", stage: 2 },
+    { type: "wealth_office", stage: 2 }, { type: "digital_hub", stage: 2 },
+    { type: "trading_house", stage: 2 }, { type: "private_vault", stage: 2 },
+  ],
+  established: [
+    { type: "regional_bank", stage: 2 },
+    { type: "stock_brokerage", stage: 3 }, { type: "fund_hq", stage: 3 },
+    { type: "insurance_hq", stage: 3 }, { type: "data_center", stage: 3 },
+    { type: "market_maker", stage: 3 }, { type: "private_bank", stage: 3 },
+    { type: "corp_treasury", stage: 3 }, { type: "securities_exchange", stage: 3 },
+    { type: "investment_bank", stage: 3 }, { type: "community_bank", stage: 3 },
+  ],
+  elite: [
+    { type: "global_brokerage", stage: 3 }, { type: "major_am", stage: 3 },
+    { type: "inst_trading", stage: 3 }, { type: "global_wealth", stage: 3 },
+    { type: "exchange_tower", stage: 3 }, { type: "data_center", stage: 3 },
+    { type: "market_maker", stage: 3 }, { type: "corp_treasury", stage: 3 },
+    { type: "regional_bank", stage: 3 }, { type: "stock_brokerage", stage: 3 },
+    { type: "fund_hq", stage: 3 }, { type: "insurance_hq", stage: 3 },
+    { type: "private_bank", stage: 3 }, { type: "investment_bank", stage: 2 },
+  ],
+  tycoon: [
+    { type: "intl_bank", stage: 3 }, { type: "sovereign_fund", stage: 3 },
+    { type: "inst_trading", stage: 3 }, { type: "global_wealth", stage: 3 },
+    { type: "data_center", stage: 3 }, { type: "data_center", stage: 3 },
+    { type: "data_center", stage: 3 }, { type: "data_center", stage: 3 },
+    { type: "data_center", stage: 3 }, { type: "data_center", stage: 3 },
+    { type: "market_maker", stage: 3 }, { type: "market_maker", stage: 3 },
+    { type: "market_maker", stage: 3 }, { type: "market_maker", stage: 3 },
+    { type: "market_maker", stage: 3 }, { type: "market_maker", stage: 3 },
+  ],
+};
+
 function boardFor(stage: MarketStage): PlacedCard[] {
-  const stageIndex = stages.indexOf(stage);
-  const candidates = BUILDING_LIST.filter((spec) => stages.indexOf(spec.era) <= stageIndex);
-  return Array.from({ length: stageLevel[stage] }, (_, index) => ({
-    id: `${stage}-${index}`,
-    type: candidates[index % candidates.length]!.id,
-    x: index % 10,
-    y: Math.floor(index / 10),
-    stage: 1 as const,
-  }));
+  const cards: PlacedCard[] = [];
+  for (const [index, entry] of STAGE_BOARDS[stage].entries()) {
+    let placed = false;
+    for (let y = 0; y < 12 && !placed; y++) {
+      for (let x = 0; x < 12 && !placed; x++) {
+        if (fits(cards, entry.type, x, y, undefined, 12, 0)) {
+          cards.push({ id: `${stage}-${index}`, type: entry.type, x, y, stage: entry.stage });
+          placed = true;
+        }
+      }
+    }
+    if (!placed) throw new Error(`simulation board for ${stage} cannot place ${entry.type}`);
+  }
+  return cards;
 }
 
 function round(value: number, digits = 2): number {
@@ -42,10 +102,12 @@ function simulateWeek(stage: MarketStage, huntRate = 1, mature = false) {
   let reputationTotal = 0;
   let riskTotal = 0;
   const start = Date.UTC(2026, 8, 14);
+  let segments: CustomerSegments | undefined;
 
   for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
     const day = new Date(start + dayIndex * 86_400_000).toISOString().slice(0, 10);
-    const result = settleDistrict(board, eventForDay(day, playerId), "walk", state, dayIndex + 17);
+    const result = settleDistrict(board, eventForDay(day, playerId), "walk", state, dayIndex + 17, {}, {}, segments);
+    segments = result.segments;
     activityMinor += result.volumeMinor;
     revenueMinor += result.revenue.reduce((sum, line) => sum + Math.max(0, line.amountMinor), 0);
     activeCustomersTotal += result.population;
@@ -79,7 +141,10 @@ function simulateWeek(stage: MarketStage, huntRate = 1, mature = false) {
     level: stageLevel[stage],
     building: `${board.length} building mix`,
     activity: round(activityMinor),
+    // Score-consumable units: the performance score divides minor by CASH_SCALE.
+    activityPoints: round(activityMinor / CASH_SCALE),
     revenue: round(revenueMinor),
+    revenueCash: round(revenueMinor / CASH_SCALE),
     customers: round(metrics.averageActiveCustomers),
     newRetained: round(metrics.newRetainedCustomers),
     utilization: round(metrics.averageUtilization * 100, 1),

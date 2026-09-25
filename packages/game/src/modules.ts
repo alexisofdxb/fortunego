@@ -362,17 +362,20 @@ export function rollHuntModuleReward(difficulty: HuntDifficulty, seed: number, c
 }
 
 export type EventModuleInteraction = { rewardChance: number; rewardRarity: ModuleRarity; rewardKind: ModuleRewardKind; rewardOn: "decision" | "mission"; eventSource?: string; lockFamilies: readonly string[]; lockReason: string | null };
+/** Re-mapped onto the 12 economic event family ids (plan §1.4); lock semantics carried over from the retired catalog. */
 export const EVENT_MODULE_INTERACTIONS: Record<string, EventModuleInteraction> = {
-  research_breakthrough: { rewardChance: 0.12, rewardRarity: "uncommon", rewardKind: "module", rewardOn: "mission", eventSource: "Tech Rally", lockFamilies: [], lockReason: null },
-  ipo_week: { rewardChance: 0.20, rewardRarity: "epic", rewardKind: "module", rewardOn: "mission", eventSource: "IPO Week", lockFamilies: [], lockReason: null },
-  liquidity_crunch: { rewardChance: 0.18, rewardRarity: "rare", rewardKind: "parts", rewardOn: "decision", eventSource: "Liquidity Crunch", lockFamilies: ["banking", "treasury", "exchange", "market_maker"], lockReason: "Liquidity event: Module changes are locked on affected buildings until resolution." },
-  financial_summit: { rewardChance: 0.25, rewardRarity: "epic", rewardKind: "module", rewardOn: "mission", eventSource: "M&A Boom", lockFamilies: [], lockReason: null },
-  earnings_week: { rewardChance: 0.12, rewardRarity: "uncommon", rewardKind: "module", rewardOn: "mission", eventSource: "Earnings Season", lockFamilies: [], lockReason: null },
-  market_correction: { rewardChance: 0.20, rewardRarity: "rare", rewardKind: "module", rewardOn: "mission", eventSource: "Market Correction", lockFamilies: ["trade", "exchange", "market_maker"], lockReason: "Market correction: affected market Modules are locked until resolution." },
+  bull_market: { rewardChance: 0.12, rewardRarity: "uncommon", rewardKind: "module", rewardOn: "mission", eventSource: "Bull Market", lockFamilies: [], lockReason: null },
   tech_rally: { rewardChance: 0.20, rewardRarity: "rare", rewardKind: "module", rewardOn: "mission", eventSource: "Tech Rally", lockFamilies: [], lockReason: null },
-  system_outage: { rewardChance: 0, rewardRarity: "common", rewardKind: "parts", rewardOn: "decision", lockFamilies: ["research", "digital", "exchange"], lockReason: "Operational event: affected infrastructure Modules are locked until the outage ends." },
-  market_maker_dislocation: { rewardChance: 0, rewardRarity: "common", rewardKind: "parts", rewardOn: "decision", lockFamilies: ["market_maker", "exchange", "trade"], lockReason: "Market dislocation: affected market Modules are locked until the event ends." },
-  bank_run_rumor: { rewardChance: 0, rewardRarity: "common", rewardKind: "parts", rewardOn: "decision", lockFamilies: ["banking", "treasury", "lend"], lockReason: "Bank-run event: defensive Module loadouts are locked until resolution." },
+  dividend_week: { rewardChance: 0.12, rewardRarity: "uncommon", rewardKind: "module", rewardOn: "mission", eventSource: "Dividend Week", lockFamilies: [], lockReason: null },
+  rate_cut: { rewardChance: 0.10, rewardRarity: "uncommon", rewardKind: "module", rewardOn: "mission", eventSource: "Rate Cut", lockFamilies: [], lockReason: null },
+  rate_hike: { rewardChance: 0, rewardRarity: "common", rewardKind: "parts", rewardOn: "decision", eventSource: "Rate Hike", lockFamilies: ["banking"], lockReason: "Rate hike: lending Modules are locked until the event ends." },
+  credit_boom: { rewardChance: 0.12, rewardRarity: "uncommon", rewardKind: "module", rewardOn: "mission", eventSource: "Credit Boom", lockFamilies: [], lockReason: null },
+  recession: { rewardChance: 0, rewardRarity: "common", rewardKind: "parts", rewardOn: "decision", eventSource: "Recession", lockFamilies: ["investment_banking"], lockReason: "Recession: deal-making Modules are locked until the cycle turns." },
+  liquidity_crunch: { rewardChance: 0.18, rewardRarity: "rare", rewardKind: "parts", rewardOn: "decision", eventSource: "Liquidity Crunch", lockFamilies: ["banking", "treasury", "exchange", "market_maker"], lockReason: "Liquidity event: Module changes are locked on affected buildings until resolution." },
+  bank_run: { rewardChance: 0, rewardRarity: "common", rewardKind: "parts", rewardOn: "decision", eventSource: "Bank Run", lockFamilies: ["banking", "treasury"], lockReason: "Bank-run event: defensive Module loadouts are locked until resolution." },
+  market_correction: { rewardChance: 0.20, rewardRarity: "rare", rewardKind: "module", rewardOn: "mission", eventSource: "Market Correction", lockFamilies: ["exchange", "market_maker"], lockReason: "Market correction: affected market Modules are locked until resolution." },
+  earnings_season: { rewardChance: 0.12, rewardRarity: "uncommon", rewardKind: "module", rewardOn: "mission", eventSource: "Earnings Season", lockFamilies: [], lockReason: null },
+  ipo_week: { rewardChance: 0.20, rewardRarity: "epic", rewardKind: "module", rewardOn: "mission", eventSource: "IPO Week", lockFamilies: [], lockReason: null },
 };
 export function eventModuleInteraction(eventId: string): EventModuleInteraction | null { return EVENT_MODULE_INTERACTIONS[eventId] ?? null; }
 export function moduleLockForEvent(eventId: string, buildingFamily: string): string | null { const interaction = eventModuleInteraction(eventId); return interaction && interaction.lockFamilies.includes(buildingFamily) ? interaction.lockReason : null; }

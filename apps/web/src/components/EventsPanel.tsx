@@ -7,6 +7,9 @@ export function EventsPanel({ plot }: { plot: PlotSnapshot }) {
   const claimMission = useEventMissionClaim();
   const eventState = plot.eventState;
   const global = eventState.globalEvent;
+  const calendar = plot.eventCalendar;
+  const windowLabel = (startsAt: number, endsAt: number) =>
+    `${new Date(startsAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} – ${new Date(endsAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
   return (
     <section className="event-panel">
       <div className="portfolio-heading">
@@ -15,6 +18,25 @@ export function EventsPanel({ plot }: { plot: PlotSnapshot }) {
           v{eventState.cycle.cycleVersion} · {eventState.catalogCount} events
         </span>
       </div>
+      {calendar ? (
+        <div className="event-calendar">
+          {calendar.announced.map((window) => {
+            const isCurrent = calendar.current?.eventId === window.eventId;
+            return (
+              <div className={`event-window ${isCurrent ? "current" : ""}`} key={window.eventId}>
+                <div>
+                  <b>{window.title}</b>
+                  <span>{windowLabel(window.startsAt, window.endsAt)}</span>
+                </div>
+                <span className={`known-badge ${isCurrent ? "live" : ""}`}>{isCurrent ? "Active window" : "Known window"}</span>
+              </div>
+            );
+          })}
+          {!calendar.current && !calendar.announced.length ? (
+            <small className="settled">No announced major windows this week. Minor or surprise events are not scheduled in advance.</small>
+          ) : null}
+        </div>
+      ) : null}
       <div className="event-summary">
         <b>{global.event}</b>
         <span>

@@ -271,13 +271,13 @@ async function runAcceptance(): Promise<void> {
   await prisma.plotgoInvestment.update({ where: { id: carryInvest.investmentId }, data: { startedDay: yesterday, maturesDay: yesterday } });
   // cashAfterMinor + repaidMinor reconstructs the host's post-settle balance
   // before the hook, whatever the settle delta drifted to across re-settles.
-  await prisma.player.update({ where: { id: hostId }, data: { cashMinor: 100_000 } });
+  await prisma.player.update({ where: { id: hostId }, data: { cashMinor: 100_000, conditionBps: 0 } });
   await allowResettle(hostId, today);
   const hostSettle3 = await postOk("/api/session/settle", { verb: "walk" }, hostId);
   const repaid3 = hostSettle3.receipt.visitEconomy?.repaidMinor as number;
   const settledBeforeHook = (hostSettle3.receipt.cashAfterMinor as number) + repaid3;
-  assert(repaid3 === Math.min(200_000, Math.max(0, settledBeforeHook)), "host must repay exactly what the settled balance covers");
-  assert(repaid3 > 0 && repaid3 < 200_000, `partial repayment expected (got ${repaid3})`);
+  assert(repaid3 === Math.min(200_000, Math.max(0, settledBeforeHook)), `host must repay exactly what the settled balance covers (repaid=${repaid3} settledBeforeHook=${settledBeforeHook} cashAfter=${hostSettle3.receipt.cashAfterMinor})`);
+  assert(repaid3 > 0 && repaid3 < 200_000, `partial repayment expected (got ${repaid3}, settledBeforeHook=${settledBeforeHook})`);
   const carriedRow = await prisma.plotgoInvestment.findUnique({ where: { id: carryInvest.investmentId } });
   const carriedOwed = 200_000 - repaid3;
   assert(carriedRow?.status === "active" && Number(carriedRow.owedMinor) === carriedOwed && carriedOwed > 0,

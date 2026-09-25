@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  notificationsResponseSchema,
   plotSnapshotSchema,
   playerBoardSchema,
   investmentsViewSchema,
@@ -8,10 +9,14 @@ import {
   type EventChooseRequest,
   type EventMissionClaimRequest,
   type HuntClaimRequest,
+  type HuntRerollRequest,
+  type HuntStartRequest,
   type InvestRequest,
   type ModuleEquipRequest,
   type ModuleUnequipRequest,
   type MoveRequest,
+  type NotificationsResponse,
+  type ObjectiveRerollRequest,
   type OfflineSummaryViewRequest,
   type PerformanceClaimRequest,
   type PlaceRequest,
@@ -33,6 +38,7 @@ import { useUiStore } from "../state/ui";
 export const PLOT_KEY = ["plot"] as const;
 export const LEADERBOARD_KEY = ["leaderboard"] as const;
 export const INVESTMENTS_KEY = ["investments"] as const;
+export const NOTIFICATIONS_KEY = ["notifications"] as const;
 
 function usePlotMutation<TVars, TData = PlotSnapshot>(
   fn: (vars: TVars) => Promise<TData>,
@@ -111,6 +117,30 @@ export function useHuntClaim() {
   return usePlotMutation(
     (body: HuntClaimRequest) => api<PlotSnapshot & { dropped?: string | null }>("/api/hunt/claim", { method: "POST", body: JSON.stringify(body) }),
     (data) => (data.dropped ? `You found ${data.dropped} stock units.` : "Hunt completed; reward pool fallback applied."),
+  );
+}
+
+/** POST /api/hunts/start — start an unstarted daily offer; the offer keeps its own real-time expiry. */
+export function useHuntStart() {
+  return usePlotMutation(
+    (body: HuntStartRequest) => api<PlotSnapshot & { started?: string }>("/api/hunts/start", { method: "POST", body: JSON.stringify(body) }),
+    () => "Hunt started — progress only counts while you play actively.",
+  );
+}
+
+/** POST /api/hunts/reroll — free daily reroll (1/day); replaces one unstarted offer. */
+export function useHuntReroll() {
+  return usePlotMutation(
+    (body: HuntRerollRequest) => api<PlotSnapshot>("/api/hunts/reroll", { method: "POST", body: JSON.stringify(body) }),
+    () => "Offer rerolled — a fresh Hunt offer is on the board.",
+  );
+}
+
+/** POST /api/objectives/reroll — one shared lane reroll per day across all objective lanes. */
+export function useObjectiveReroll() {
+  return usePlotMutation(
+    (body: ObjectiveRerollRequest) => api("/api/objectives/reroll", { method: "POST", body: JSON.stringify(body) }),
+    () => "Objective lane rerolled for today.",
   );
 }
 
@@ -263,6 +293,55 @@ export function useOnboardingSkip() {
       void queryClient.invalidateQueries({ queryKey: PLOT_KEY });
     },
     onError: (error) => setToast(error instanceof Error ? error.message : String(error)),
+  });
+}
+
+/** GET /api/notifications — in-app inbox, newest first; 60s polling (spec sheet 12). */
+export function useNotifications() {
+  return useQuery({
+    queryKey: NOTIFICATIONS_KEY,
+    enabled: Boolean(getPlayerId()),
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const data = await api<unknown>("/api/notifications");
+      const parsed = notificationsResponseSchema.safeParse(data);
+      if (!parsed.success) throw parsed.error;
+      return parsed.data;
+    },
+  });
+}
+
+function useNotificationInvalidator() {
+  const queryClient = useQueryClient();
+  const setToast = useUiStore((s) => s.setToast);
+  return {
+    queryClient,
+    setToast,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
+      void queryClient.invalidateQueries({ queryKey: PLOT_KEY });
+    },
+    onError: (error: unknown) => setToast(error instanceof Error ? error.message : String(error)),
+  };
+}
+
+/** POST /api/notifications/:id/read */
+export function useNotificationRead() {
+  const { onSuccess, onError } = useNotificationInvalidator();
+  return useMutation({
+    mutationFn: (id: string) => api(`/api/notifications/${id}/read`, { method: "POST", body: "{}" }),
+    onSuccess,
+    onError,
+  });
+}
+
+/** POST /api/notifications/read-all */
+export function useNotificationReadAll() {
+  const { onSuccess, onError } = useNotificationInvalidator();
+  return useMutation({
+    mutationFn: () => api("/api/notifications/read-all", { method: "POST", body: "{}" }),
+    onSuccess,
+    onError,
   });
 }
 

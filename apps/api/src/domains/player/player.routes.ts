@@ -2,8 +2,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import {
   CARDS,
+  NEW_PLAYER_BOOST_HOURS,
   SESSION_VERBS,
   STARTER_CASH_MINOR,
+  bootstrapCustomerSegments,
   collectionBonuses,
   marketEventForDay,
   marketStageForEmpireLevel,
@@ -25,6 +27,7 @@ import { upsertWeeklySessionPerformance } from "../performance/performance.servi
 import { snapshot, settlePlayer } from "../../shared/snapshot";
 import { eventState } from "../events/events.service";
 import { settleVisitEconomy } from "../economy/visits.service";
+import { produceRiskAlert } from "../notifications/notifications.service";
 import { newId } from "../../shared/types";
 
 export const identityRoutes = new Hono<AppEnv>();
@@ -61,6 +64,8 @@ identityRoutes.post("/api/session", async (c) => {
         satisfactionBps: 5000,
         transactions: 0,
         volumeMinor: 0,
+        // New-player acquisition boost (doc Model Assumptions): 3× for 24h.
+        acquisitionBoostUntil: Date.now() + NEW_PLAYER_BOOST_HOURS * 3_600_000,
       },
     });
     await ensureOpeningLedger(prisma, id, STARTER_CASH_MINOR);
@@ -97,6 +102,11 @@ identityRoutes.post("/api/session/settle", requirePlayer, async (c) => {
   // Replay lineage (spec sheets 10/13): only attached to the ledger when a module affected the settle.
   const moduleLineage = await moduleLineageRefs(id, activeBoard, moduleEffects);
   const archetype = await archetypeResolutionForPlayer(id, activeBoard);
+  // Phase 2 customer model: carry persisted segments; lazily seed a small
+  // starting population by board affinity on the first settle (boost window
+  // already set at session create for new players).
+  const carriedSegments = p.customerSegments ?? bootstrapCustomerSegments(activeBoard);
+  const acquisitionBoost = Date.now() < p.acquisitionBoostUntil;
   let result = settleDistrict(
     activeBoard,
     activeEvent,
@@ -105,30 +115,15 @@ identityRoutes.post("/api/session/settle", requirePlayer, async (c) => {
     dayData.seed,
     moduleEffects,
     archetype.effects,
+    carriedSegments,
+    acquisitionBoost,
   );
-  let firstCustomerAssistUsed = false;
-  const onboarding = await onboardingRow(id);
-  const onboardingElapsedMs = onboarding?.onboardingStartedAt == null ? 0 : Date.now() - onboarding.onboardingStartedAt;
-  const firstCustomerMissing = !(await onboardingMilestoneRows(id)).some((milestone) => milestone.milestoneId === "onboarding_first_customer");
-  if ((result.population <= 0 || result.transactions <= 0) && activeBoard.length > 0 && onboarding?.onboardingStatus === "active" && onboarding.firstCustomerAssistUsed === 0 && firstCustomerMissing && onboardingElapsedMs >= 2 * 60_000) {
-    const capacityBeforeAssist = activeBoard.reduce((sum, card) => sum + Math.max(1, CARDS[resolveType(card.type)]?.customersBase ?? 1), 0);
-    if (capacityBeforeAssist > 0 && await claimTutorialRecovery(id, "first_customer_assist", 0, { reason: "first_customer_demand_sla", elapsedMinutes: Number((onboardingElapsedMs / 60_000).toFixed(2)) })) {
-      const assistedEvent = { ...activeEvent, populationBps: Math.max(activeEvent.populationBps, 10_000) };
-      const assistedResult = settleDistrict(
-        activeBoard,
-        assistedEvent,
-        body.verb,
-        { cashMinor: p.cashMinor, reputationBps: p.reputationBps, conditionBps: p.conditionBps },
-        dayData.seed,
-        moduleEffects,
-        archetype.effects,
-      );
-      if (assistedResult.population > 0) {
-        result = assistedResult;
-        firstCustomerAssistUsed = true;
-      }
-    }
-  }
+  // First customers are guaranteed structurally by the canonical customer model
+  // (doc Model Assumptions): the 24h new-player acquisition boost (3x) plus the
+  // affinity-seeded starting population make a zero-customer first settle
+  // impossible on any non-empty board — the old demand-assist SLA path was
+  // removed as superseded. The onboarding_first_customer milestone is still
+  // recorded below whenever the first settle serves customers.
   const portfolio = await settlePortfolio(id, day, dayData.marks);
   const portfolioCashMinor = portfolio.applied ? portfolio.feeMinor : 0;
   const totalCashDeltaMinor = result.cashDeltaMinor + portfolioCashMinor;
@@ -156,7 +151,7 @@ identityRoutes.post("/api/session/settle", requirePlayer, async (c) => {
       feeMinor: portfolio.feeMinor,
       endAumMinor: portfolio.endAumMinor,
     },
-    onboardingRecovery: firstCustomerAssistUsed ? ["first_customer_assist"] : [],
+    onboardingRecovery: [],
   };
   const week = isoWeek(new Date(`${day}T00:00:00Z`));
   const activeDaysThisWeek = p.activeDays.filter((activeDay) => isoWeek(new Date(`${activeDay}T00:00:00Z`)) === week).length;
@@ -187,6 +182,7 @@ identityRoutes.post("/api/session/settle", requirePlayer, async (c) => {
         transactions: result.transactions,
         volumeMinor: result.volumeMinor,
         weeklyScore: p.weeklyScore + result.earnedDeltaMinor + portfolioCashMinor,
+        customerSegments: result.segments as object,
       },
     });
     const visitEconomy = await settleVisitEconomy(
@@ -222,5 +218,8 @@ identityRoutes.post("/api/session/settle", requirePlayer, async (c) => {
   if (result.population > 0) await recordOnboardingMilestone(id, "onboarding_first_customer", "session.settle");
   if (totalCashDeltaMinor > 0) await recordOnboardingMilestone(id, "onboarding_first_cash", "session.settle");
   await recordMeaningfulAction(id, `session:${body.verb}`);
+  // Critical risk transition alert (spec sheet 12): risk enters the critical
+  // band (>=9000 bps) from below — one notification per player per day max.
+  if (result.riskBps >= 9_000 && p.riskBps < 9_000) await produceRiskAlert(id, result.riskBps);
   return c.json({ ...(await snapshot(id)), receipt: outcome.receipt });
 });

@@ -2,6 +2,7 @@ import { usePlot } from "./api/hooks";
 import { useUiStore } from "./state/ui";
 import { Header } from "./components/Header";
 import { OfflineBanner } from "./components/OfflineBanner";
+import { DailyBriefing } from "./components/DailyBriefing";
 import { OnboardingGuide } from "./components/OnboardingGuide";
 import { HuntStrip } from "./components/HuntStrip";
 import { PortfolioPanel } from "./components/PortfolioPanel";
@@ -34,6 +35,7 @@ export default function App() {
     <div id="app">
       <Header plot={plot} />
       <OfflineBanner plot={plot} />
+      <DailyBriefing plot={plot} />
       <OnboardingGuide plot={plot} />
       <HuntStrip plot={plot} />
       <PortfolioPanel plot={plot} />

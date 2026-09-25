@@ -53,8 +53,78 @@ model Player {
   personalEventProtectionUntil BigInt @default(0)
   archetype              String?
   archetypeChangedAt     BigInt?
+  operatingStreak        Int     @default(0)
+  longestStreak          Int     @default(0)
+  // Phase 2 customer economic model: persisted per-segment customer counts
+  // (nullable; lazily initialized at the first settle under the new model).
+  customerSegments       Json?
+  // New-player acquisition boost window (3× acquisition, doc Model Assumptions).
+  acquisitionBoostUntil  BigInt  @default(0)
 
   @@map("players")
+}
+
+// Authoritative daily retention state (spec sheet 14: daily_player_state).
+// Eligibility (>=10 engaged minutes + >=1 meaningful action) is finalized here
+// once per UTC day; the weekly reset job records it for the previous day.
+model PlayerDailyState {
+  playerId          String
+  day               String
+  engagedMinutes    Int      @default(0)
+  meaningfulActions Int      @default(0)
+  eligible          Boolean  @default(false)
+  huntOfferSet      Boolean  @default(false)
+  huntRerolled      Boolean  @default(false)
+  objectiveSet      Boolean  @default(false)
+  objectiveRerolled Boolean  @default(false)
+  finalizedAt       BigInt?
+
+  @@id([playerId, day])
+  @@map("player_daily_state")
+}
+
+// Daily business objective state (spec sheet 14: business_objective_state).
+// Completion is derived from authoritative domain evidence only — no client flag.
+model PlotgoObjectiveState {
+  playerId       String
+  day            String
+  lane           String
+  templateId     String
+  targetJson     Json
+  progressJson   Json    @default("{}")
+  evidenceCursor Json    @default("{}")
+  status         String  @default("active")
+  rewardMinor    BigInt  @default(0)
+  rerolled       Boolean @default(false)
+  createdAt      BigInt
+
+  @@id([playerId, day, lane])
+  @@map("plotgo_objective_state")
+}
+
+// Notification outbox (spec sheet 14). Frequency caps are enforced by the
+// unique dedupeKey (e.g. payout_ready:{epoch}); in-app transport only.
+model NotificationOutbox {
+  id          String  @id
+  playerId    String
+  type        String
+  dedupeKey   String  @unique
+  payloadJson Json    @default("{}")
+  eligibleAt  BigInt
+  state       String  @default("pending")
+  createdAt   BigInt
+
+  @@index([playerId, state])
+  @@map("notification_outbox")
+}
+
+// Scheduler checkpoint for boot catch-up (idempotent replay of missed days).
+model PlotgoJobCheckpoint {
+  jobId     String @id
+  day       String
+  updatedAt BigInt
+
+  @@map("plotgo_job_checkpoints")
 }
 
 model PlotgoOnboardingMilestone {
@@ -153,6 +223,9 @@ model MarketHuntSlot {
   status            String  @default("active")
   claimedAt         BigInt?
   reservedMinor     BigInt  @default(0)
+  // Offer-board lifecycle: unstarted offers expire at the next UTC reset;
+  // started hunts keep their own real-time expiry. Legacy rows default true.
+  started           Boolean @default(true)
 
   @@index([playerId, issuedDay])
   @@map("market_hunt_slots")
@@ -201,7 +274,7 @@ model WeeklyPerformance {
 model WeeklySnapshot {
   id            String  @id
   week          String  @unique
-  status        String  @default("finalized")
+  status        String  @default("pending")
   sourceCursors Json    @default("{}")
   checksums     Json    @default("{}")
   moduleLineage Json    @default("{}")

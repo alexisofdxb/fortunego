@@ -47,6 +47,7 @@ const huntViewSchema = z.object({
   points: z.number(),
   expiresAt: z.number(),
   status: z.string(),
+  started: z.boolean().optional(),
   claimed: z.boolean(),
   ready: z.boolean(),
   claimBlockedReason: z.string().nullable(),
@@ -285,6 +286,64 @@ export const plotSnapshotSchema = z.object({
   ),
   hunts: z.array(huntViewSchema).optional(),
   hunt: huntViewSchema.nullable(),
+  activeHuntCount: z.number().optional(),
+  rerollAvailable: z.boolean().optional(),
+  huntOffers: z.array(huntViewSchema).optional(),
+  objectives: z
+    .object({
+      day: z.string(),
+      rerollAvailable: z.boolean(),
+      lanes: z.array(
+        z.object({
+          lane: z.enum(["operations", "growth", "market"]),
+          templateId: z.string(),
+          title: z.string(),
+          description: z.string(),
+          difficulty: z.string(),
+          target: z.number(),
+          progress: z.object({ current: z.number(), target: z.number(), done: z.boolean() }),
+          status: z.string(),
+          rewardMinor: z.number(),
+          rerolled: z.boolean(),
+        }),
+      ),
+    })
+    .optional(),
+  eventCalendar: z
+    .object({
+      week: z.string(),
+      current: z
+        .object({
+          eventId: z.string(),
+          title: z.string(),
+          startsAt: z.number(),
+          endsAt: z.number(),
+          durationHours: z.number(),
+        })
+        .nullable(),
+      announced: z.array(
+        z.object({
+          eventId: z.string(),
+          title: z.string(),
+          startsAt: z.number(),
+          endsAt: z.number(),
+          durationHours: z.number(),
+        }),
+      ),
+    })
+    .optional(),
+  weekStatus: z
+    .object({
+      week: z.string(),
+      status: z.enum(["open", "pending", "finalized"]),
+      closesAt: z.number(),
+      msUntilClose: z.number(),
+      priorWeek: z.object({ week: z.string(), status: z.string() }),
+    })
+    .optional(),
+  operatingStreak: z.number().optional(),
+  longestStreak: z.number().optional(),
+  notificationsUnread: z.number().optional(),
   event: z.object({
     id: z.string(),
     title: z.string(),
@@ -579,6 +638,41 @@ export type PositionsRebalanceRequest = z.infer<typeof positionsRebalanceRequest
 
 export const offlineSummaryViewRequestSchema = z.object({ summaryId: z.string().optional() });
 export type OfflineSummaryViewRequest = z.infer<typeof offlineSummaryViewRequestSchema>;
+
+// ---------------------------------------------------------------------------
+// Retention loop — daily briefing / hunts / objectives / notifications
+// ---------------------------------------------------------------------------
+
+export const huntStartRequestSchema = z.object({ huntId: z.string() });
+export type HuntStartRequest = z.infer<typeof huntStartRequestSchema>;
+
+export const huntRerollRequestSchema = z.object({ huntId: z.string().optional() });
+export type HuntRerollRequest = z.infer<typeof huntRerollRequestSchema>;
+
+export const objectiveRerollRequestSchema = z.object({
+  lane: z.enum(["operations", "growth", "market"]),
+});
+export type ObjectiveRerollRequest = z.infer<typeof objectiveRerollRequestSchema>;
+
+/** In-app notification inbox item (backend NotificationView, newest first). */
+export const notificationViewSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  title: z.string(),
+  body: z.string(),
+  dedupeKey: z.string(),
+  payload: z.record(z.unknown()),
+  state: z.string(),
+  eligibleAt: z.number(),
+  createdAt: z.number(),
+});
+export type NotificationView = z.infer<typeof notificationViewSchema>;
+
+export const notificationsResponseSchema = z.object({
+  notifications: z.array(notificationViewSchema),
+  unread: z.number(),
+});
+export type NotificationsResponse = z.infer<typeof notificationsResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // Response wrappers

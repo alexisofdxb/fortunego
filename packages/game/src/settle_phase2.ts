@@ -1,10 +1,31 @@
 import { CARDS, type Lineage } from "./buildings.ts";
 import { CASH_SCALE } from "./constants.ts";
-import { type DistrictEvent, type SessionVerb } from "./events.ts";
+import { type DistrictEvent, type SessionVerb } from "./economic_events.ts";
 import type { PlacedCard } from "./index.ts";
 import { resolvePlacement, type PlacementResolution } from "./placement.ts";
 import type { ModuleEffectVector } from "./modules.ts";
+import { moduleBuildingFamily } from "./modules.ts";
 import type { ArchetypeEffects } from "./archetypes.ts";
+import { marketStageForEmpireLevel, type MarketStage } from "./market_phase3.ts";
+import {
+  CUSTOMER_SEGMENT_KEYS,
+  CUSTOMER_SEGMENTS,
+  NEW_PLAYER_ACQUISITION_BOOST,
+  SERVICE_AFFINITY,
+  STAGE_DEMAND,
+  addressableDemand,
+  applyMaturation,
+  competitionModifier,
+  emptyCustomerState,
+  reputationModifier,
+  serviceModifier,
+  stepCustomers,
+  totalCustomers,
+  type BuildingCategory,
+  type CustomerState,
+  type CustomerStepResult,
+  type MaturationContext,
+} from "./customer_model.ts";
 
 function stageMul(stage: 1 | 2 | 3): number {
   return stage === 1 ? 1 : stage === 2 ? 1.35 : 1.8;
@@ -73,16 +94,6 @@ function emptySegments(): CustomerSegments {
   return { generalConsumers: 0, retailInvestors: 0, activeTraders: 0, smallBusinesses: 0, corporateClients: 0, highNetWorth: 0, institutional: 0 };
 }
 
-function addSegments(target: CustomerSegments, source: CustomerSegments) {
-  target.generalConsumers += source.generalConsumers;
-  target.retailInvestors += source.retailInvestors;
-  target.activeTraders += source.activeTraders;
-  target.smallBusinesses += source.smallBusinesses;
-  target.corporateClients += source.corporateClients;
-  target.highNetWorth += source.highNetWorth;
-  target.institutional += source.institutional;
-}
-
 function rectanglesTouch(a: PlacedCard, b: PlacedCard): boolean {
   const [aw, ah] = specOf(a.type).footprint;
   const [bw, bh] = specOf(b.type).footprint;
@@ -133,34 +144,6 @@ function verbBps(verb: SessionVerb, cards: PlacedCard[]): number {
   return 10_000;
 }
 
-function segmentMix(lineage: Lineage): CustomerSegments {
-  const segments = emptySegments();
-  if (lineage === "bank" || lineage === "lend" || lineage === "insure") {
-    segments.generalConsumers = 55; segments.smallBusinesses = 25; segments.retailInvestors = 10; segments.highNetWorth = 10;
-  } else if (lineage === "trade" || lineage === "exchange" || lineage === "broker") {
-    segments.retailInvestors = 40; segments.activeTraders = 35; segments.institutional = 25;
-  } else if (lineage === "fund" || lineage === "wealth") {
-    segments.retailInvestors = 25; segments.highNetWorth = 50; segments.institutional = 25;
-  } else if (lineage === "ib" || lineage === "treasury" || lineage === "vault") {
-    segments.corporateClients = 50; segments.institutional = 30; segments.highNetWorth = 20;
-  } else {
-    segments.generalConsumers = 20; segments.retailInvestors = 30; segments.activeTraders = 25; segments.corporateClients = 15; segments.institutional = 10;
-  }
-  return segments;
-}
-
-function scaledSegments(mix: CustomerSegments, total: number): CustomerSegments {
-  const result = emptySegments();
-  const entries = Object.entries(mix) as [keyof CustomerSegments, number][];
-  let assigned = 0;
-  entries.forEach(([key], index) => {
-    const amount = index === entries.length - 1 ? total - assigned : Math.floor(total * (mix[key] / 100));
-    result[key] = Math.max(0, amount);
-    assigned += result[key];
-  });
-  return result;
-}
-
 function revenueModel(lineage: Lineage): RevenueModel {
   if (lineage === "bank" || lineage === "lend") return "spread";
   if (lineage === "trade" || lineage === "exchange") return "fee_volume";
@@ -172,111 +155,278 @@ function revenueModel(lineage: Lineage): RevenueModel {
   return "service";
 }
 
-function eventLineageBps(event: DistrictEvent, lineage: Lineage): number {
-  if (event.id === "market_rally" && (lineage === "trade" || lineage === "exchange" || lineage === "broker")) return 12_000;
-  if (event.id === "tech_boom" && (lineage === "research" || lineage === "digital")) return 12_000;
-  if (event.id === "credit_squeeze" && (lineage === "bank" || lineage === "lend")) return 8_000;
-  if (event.id === "bank_run" && lineage === "bank") return 7_500;
-  if (event.id === "research_week" && (lineage === "research" || lineage === "fund")) return 11_500;
-  return 10_000;
+// ---------------------------------------------------------------------------
+// Phase 2 — persistent customer dynamics (PLOT_Customer_Economic_Simulation_v0.1).
+//
+// The settlement no longer recomputes an instantaneous equilibrium population.
+// Instead it carries per-segment customer counts (persisted by the API):
+//   targets  = Σ_buildings affinity × stage-pool × capture × attraction ×
+//              rep/service/synergy/marketing/competition × event segment demand
+//   capacity = Σ lv1Capacity × stageMul × module capacity bps × placement
+//   counts   = stepCustomers(one UTC day, 15-min sub-steps) → maturation flows
+//   revenue  = grossCashPerHour × stageMul × 24 × served share × weighted
+//              customer value × operational efficiency × congestion band
+//              revenue efficiency × event revenue mod × module activity
+//              efficiency (doc Stage Scenarios: gross/h = base × util × wValue
+//              × opEff; net = gross × (1 − opCostBps)); activity pts/h = base
+//              × util × weighted activity intensity (doc, no opEff).
+// volumeMinor carries activity points × CASH_SCALE (the weekly "activity"
+// component consumed by the performance score); transactions ≈ activity points.
+// ---------------------------------------------------------------------------
+
+export type PlannedBuilding = {
+  card: PlacedCard;
+  capacity: number;
+  target: CustomerSegments;
+  weightedValue: number;
+  weightedActivity: number;
+  moduleEffect?: ModuleEffectVector;
+};
+
+export type CustomerPlan = {
+  stage: MarketStage;
+  empireLevel: number;
+  reputation: number;
+  serviceQuality: number;
+  /** Effective district capacity (doc capacity × placement capacity effect). */
+  capacity: number;
+  /** Per-segment summed acquisition targets across all buildings. */
+  targets: CustomerSegments;
+  /** Per-segment base acquisition rates (doc Customer Segments sheet). */
+  acquisitionPerDay: CustomerSegments;
+  /** Per-segment base churn rates after module retention. */
+  churnPerDay: CustomerSegments;
+  /** Per-segment acquisition multiplier (module customerAcquisition). */
+  demandModifiers: Record<keyof CustomerSegments, number>;
+  operationalEfficiency: number;
+  buildings: PlannedBuilding[];
+};
+
+export function normalizeCustomerSegments(value: Partial<CustomerSegments> | null | undefined): CustomerSegments {
+  const segments = emptySegments();
+  for (const key of CUSTOMER_SEGMENT_KEYS) segments[key] = Math.max(0, Number(value?.[key]) || 0);
+  return segments;
 }
 
-function revenueFor(card: PlacedCard, customers: CustomerSegments, event: DistrictEvent, verb: SessionVerb, conditionBps: number, moduleEffect?: ModuleEffectVector) {
-  const lineage = specOf(card.type).lineage;
-  const c = customers;
-  let amountMinor = 0;
-  let transactions = 0;
-  let volumeMinor = 0;
-  if (lineage === "bank") {
-    amountMinor = c.generalConsumers * 3 + c.smallBusinesses * 8 + c.highNetWorth * 7 + c.institutional * 9;
-    transactions = Math.round((c.generalConsumers + c.smallBusinesses + c.highNetWorth) * 0.45);
-    volumeMinor = (c.generalConsumers + c.smallBusinesses * 4 + c.highNetWorth * 8) * 120;
-  } else if (lineage === "lend") {
-    amountMinor = c.generalConsumers * 4 + c.smallBusinesses * 10 + c.corporateClients * 14;
-    transactions = Math.round((c.generalConsumers + c.smallBusinesses + c.corporateClients) * 0.35);
-    volumeMinor = (c.generalConsumers * 2 + c.smallBusinesses * 8 + c.corporateClients * 15) * 100;
-  } else if (lineage === "trade" || lineage === "exchange") {
-    amountMinor = c.retailInvestors * 3 + c.activeTraders * 6 + c.institutional * 8;
-    transactions = (c.retailInvestors * 2) + (c.activeTraders * 5) + (c.institutional * 4);
-    volumeMinor = transactions * 180;
-  } else if (lineage === "broker") {
-    amountMinor = c.retailInvestors * 4 + c.activeTraders * 7 + c.institutional * 6;
-    transactions = (c.retailInvestors * 2) + (c.activeTraders * 4) + (c.institutional * 3);
-    volumeMinor = transactions * 150;
-  } else if (lineage === "fund" || lineage === "wealth") {
-    amountMinor = c.retailInvestors * 4 + c.highNetWorth * 10 + c.institutional * 9;
-    transactions = Math.max(1, Math.round((c.retailInvestors + c.highNetWorth + c.institutional) * 0.2));
-    volumeMinor = (c.retailInvestors * 4 + c.highNetWorth * 12 + c.institutional * 15) * 100;
-  } else if (lineage === "insure") {
-    amountMinor = c.generalConsumers * 3 + c.smallBusinesses * 6 + c.corporateClients * 8 + c.highNetWorth * 5;
-    transactions = Math.round((c.generalConsumers + c.smallBusinesses + c.corporateClients) * 0.25);
-    volumeMinor = (c.generalConsumers + c.smallBusinesses * 3 + c.corporateClients * 6) * 90;
-  } else if (lineage === "ib") {
-    amountMinor = c.corporateClients * 12 + c.institutional * 14 + c.highNetWorth * 6;
-    transactions = Math.max(1, Math.round((c.corporateClients + c.institutional) * 0.12));
-    volumeMinor = (c.corporateClients * 20 + c.institutional * 25) * 100;
-  } else if (lineage === "vault" || lineage === "treasury") {
-    amountMinor = c.corporateClients * 5 + c.institutional * 5 + c.highNetWorth * 3;
-    transactions = Math.max(1, Math.round((c.corporateClients + c.institutional + c.highNetWorth) * 0.1));
-    volumeMinor = (c.corporateClients * 10 + c.institutional * 14) * 100;
-  } else {
-    amountMinor = (c.generalConsumers + c.retailInvestors + c.activeTraders + c.corporateClients) * 2;
-    transactions = Math.max(1, Math.round((c.generalConsumers + c.retailInvestors + c.activeTraders) * 0.35));
-    volumeMinor = transactions * 80;
+/** Persisted-state-safe rounding for JSON persistence (counts stay fractional internally). */
+export function roundCustomerSegments(value: CustomerSegments): CustomerSegments {
+  const segments = emptySegments();
+  for (const key of CUSTOMER_SEGMENT_KEYS) segments[key] = Math.round(value[key] * 10_000) / 10_000;
+  return segments;
+}
+
+/** Lazy first-settle seed: distribute a small starting population by board affinity. */
+export function bootstrapCustomerSegments(cards: PlacedCard[], total = 20): CustomerSegments {
+  const weights = emptySegments();
+  for (const card of cards) {
+    const family = moduleBuildingFamily(card.type) as BuildingCategory;
+    const affinity = SERVICE_AFFINITY[family] ?? SERVICE_AFFINITY["Multi-Service"]!;
+    for (const key of CUSTOMER_SEGMENT_KEYS) weights[key] += affinity[key];
   }
-  const multiplier = event.activityBps * eventLineageBps(event, lineage) * (10_000 + (event.revenueBps ?? 0)) * verbBps(verb, [card]) * conditionBps;
-  const activityBps = Math.max(0, 10_000 + (moduleEffect?.activityEfficiencyBps ?? 0));
+  const weightTotal = totalCustomers(weights);
+  const segments = emptySegments();
+  if (weightTotal <= 0) {
+    segments.generalConsumers = Math.max(0, Math.round(total));
+    return segments;
+  }
+  let assigned = 0;
+  const keys = [...CUSTOMER_SEGMENT_KEYS].sort((a, b) => weights[b] - weights[a]);
+  keys.forEach((key, index) => {
+    const amount = index === keys.length - 1 ? total - assigned : Math.floor(total * weights[key] / weightTotal);
+    segments[key] = Math.max(0, amount);
+    assigned += segments[key];
+  });
+  return segments;
+}
+
+export function computeCustomerPlan(
+  cards: PlacedCard[],
+  event: DistrictEvent,
+  state: DistrictState,
+  moduleEffects: Record<string, ModuleEffectVector> = {},
+  extraAcquisitionBps = 0,
+): CustomerPlan {
+  const empireLevel = Math.max(1, Math.min(50, cards.reduce((sum, card) => sum + 1 + Math.max(0, card.stage - 1), 0)));
+  const stage = marketStageForEmpireLevel(empireLevel);
+  const profile = STAGE_DEMAND[stage];
+  const reputation = Math.max(0, Math.min(100, state.reputationBps / 100));
+  const moduleWeight = cards.reduce((sum, card) => sum + Math.max(1, specOf(card.type).customersBase), 0);
+  const averageModuleEffect = (key: keyof Pick<ModuleEffectVector, "customerAcquisitionBps" | "retentionBps" | "serviceQualityPoints">) => moduleWeight
+    ? cards.reduce((sum, card) => sum + (moduleEffects[card.id]?.[key] ?? 0) * Math.max(1, specOf(card.type).customersBase), 0) / moduleWeight
+    : 0;
+  const acquisitionBps = Math.round(averageModuleEffect("customerAcquisitionBps"));
+  const retentionBps = Math.round(averageModuleEffect("retentionBps"));
+  const serviceQuality = Math.max(0, Math.min(100, Math.round(profile.serviceQuality + averageModuleEffect("serviceQualityPoints"))));
+  const repMod = reputationModifier(reputation);
+  const serviceMod = serviceModifier(serviceQuality);
+  const eventSegmentMod = (key: keyof CustomerSegments) => event.segmentDemand?.[key] ?? event.populationBps / 10_000;
+  const familyCounts = new Map<string, number>();
+  for (const card of cards) {
+    const family = moduleBuildingFamily(card.type);
+    familyCounts.set(family, (familyCounts.get(family) ?? 0) + 1);
+  }
+  const targets = emptySegments();
+  const buildings: PlannedBuilding[] = [];
+  for (const card of cards) {
+    const spec = specOf(card.type);
+    const moduleEffect = moduleEffects[card.id];
+    const family = moduleBuildingFamily(spec.id) as BuildingCategory;
+    const category: BuildingCategory = SERVICE_AFFINITY[family] ? family : "Multi-Service";
+    const demand = addressableDemand(category, stage, empireLevel);
+    const demandTotal = CUSTOMER_SEGMENT_KEYS.reduce((sum, key) => sum + demand[key], 0);
+    const competition = competitionModifier(familyCounts.get(moduleBuildingFamily(spec.id)) ?? 1);
+    // Doc Stage Scenarios: target = Σ affinity × pool × capture × attraction ×
+    // rep × service × synergy × marketing × competition (event multiplies per segment).
+    const modifier = profile.captureCoeff * spec.attractionMult * repMod * serviceMod * profile.synergyMod * profile.marketingMod * competition;
+    const target = emptySegments();
+    for (const key of CUSTOMER_SEGMENT_KEYS) target[key] = demand[key] * modifier * eventSegmentMod(key);
+    for (const key of CUSTOMER_SEGMENT_KEYS) targets[key] += target[key];
+    const capacity = Math.max(0, Math.round(spec.lv1Capacity * stageMul(card.stage) * (10_000 + (moduleEffect?.capacityBps ?? 0)) / 10_000));
+    buildings.push({
+      card,
+      capacity,
+      target,
+      // Weighted customer value / activity intensity (doc Building Economics columns).
+      weightedValue: demandTotal > 0 ? CUSTOMER_SEGMENT_KEYS.reduce((sum, key) => sum + demand[key] * CUSTOMER_SEGMENTS.find((def) => def.key === key)!.valueMod, 0) / demandTotal : 1,
+      weightedActivity: demandTotal > 0 ? CUSTOMER_SEGMENT_KEYS.reduce((sum, key) => sum + demand[key] * CUSTOMER_SEGMENTS.find((def) => def.key === key)!.activityIntensity, 0) / demandTotal : 1,
+      moduleEffect,
+    });
+  }
+  const acquisitionPerDay = emptySegments();
+  const churnPerDay = emptySegments();
+  const demandModifiers = {} as Record<keyof CustomerSegments, number>;
+  const retentionChurnMult = Math.max(0, 1 - retentionBps / 10_000);
+  const acquisitionMult = Math.max(0, (10_000 + acquisitionBps + extraAcquisitionBps) / 10_000);
+  for (const key of CUSTOMER_SEGMENT_KEYS) {
+    const def = CUSTOMER_SEGMENTS.find((segment) => segment.key === key)!;
+    acquisitionPerDay[key] = def.acquisitionPerDay;
+    churnPerDay[key] = def.churnPerDay * retentionChurnMult;
+    demandModifiers[key] = acquisitionMult;
+  }
   return {
-    model: revenueModel(lineage),
-    amountMinor: Math.round(amountMinor * stageMul(card.stage) * multiplier / 10_000 / 10_000 / 10_000 / 10_000 / 10_000 * activityBps / 10_000),
-    transactions: Math.round(transactions * event.activityBps / 10_000 * activityBps / 10_000),
-    volumeMinor: Math.round(volumeMinor * event.activityBps / 10_000 * activityBps / 10_000),
+    stage,
+    empireLevel,
+    reputation,
+    serviceQuality,
+    capacity: buildings.reduce((sum, building) => sum + building.capacity, 0),
+    targets,
+    acquisitionPerDay,
+    churnPerDay,
+    demandModifiers,
+    operationalEfficiency: profile.operationalEfficiency,
+    buildings,
   };
 }
 
-export function settleDistrict(cards: PlacedCard[], event: DistrictEvent, verb: SessionVerb, state: DistrictState, seed: number, moduleEffects: Record<string, ModuleEffectVector> = {}, archetypeEffects: Partial<ArchetypeEffects> = {}): SettlementResult {
+export type CustomerAdvanceOptions = {
+  /** Scales the acquisition modifier (offline catch-up: doc 0.5 efficiency). */
+  acquisitionScale?: number;
+  /** New-player boost: 3× acquisition (doc Model Assumptions). */
+  boost?: boolean;
+};
+
+/** Advance carried segments by `dayFraction` of a UTC day through the doc dynamics. */
+export function advanceCustomers(plan: CustomerPlan, segments: CustomerSegments, dayFraction: number, options: CustomerAdvanceOptions = {}): { state: CustomerSegments; step: CustomerStepResult } {
+  const fraction = Math.max(0.001, Math.min(1, dayFraction));
+  const scale = options.acquisitionScale ?? 1;
+  const demandModifiers = {} as Record<keyof CustomerSegments, number>;
+  for (const key of CUSTOMER_SEGMENT_KEYS) demandModifiers[key] = Math.max(0, plan.demandModifiers[key] * scale);
+  const step = stepCustomers(normalizeCustomerSegments(segments), {
+    targets: plan.targets,
+    acquisitionPerDay: plan.acquisitionPerDay,
+    churnPerDay: plan.churnPerDay,
+    demandModifiers,
+    capacity: plan.capacity > 0 ? plan.capacity : undefined,
+    boostMultiplier: options.boost ? NEW_PLAYER_ACQUISITION_BOOST : 1,
+    subSteps: Math.max(1, Math.round(96 * fraction)),
+  });
+  return { state: step.state as CustomerSegments, step };
+}
+
+function maturationContextFor(cards: PlacedCard[], event: DistrictEvent, verb: SessionVerb, plan: CustomerPlan, satisfactionBps: number): MaturationContext {
+  const lineages = new Set(cards.map((card) => specOf(card.type).lineage));
+  const has = (...candidates: Lineage[]) => candidates.some((lineage) => lineages.has(lineage));
+  return {
+    hasBrokerageOrFund: has("broker", "fund"),
+    hasTradingOrExchange: has("trade", "exchange"),
+    hasWealthOrFund: has("wealth", "fund"),
+    hasTreasuryOrInvestmentBank: has("treasury", "ib"),
+    hasAssetManagerOrExchange: has("fund", "exchange"),
+    hasLendingOrBanking: has("lend", "bank"),
+    satisfactionPositive: satisfactionBps > 5_000,
+    reputation: plan.reputation,
+    // Doc: "High Empire Value" — v0.1 cutoff: empire level reached the stage cap.
+    highEmpireValue: plan.empireLevel >= STAGE_DEMAND[plan.stage].endLevel,
+    // Entrepreneurship conversion: credit-boom event or an active campaign.
+    entrepreneurshipActive: event.id === "credit_boom" || verb === "campaign",
+  };
+}
+
+export function settleDistrict(cards: PlacedCard[], event: DistrictEvent, verb: SessionVerb, state: DistrictState, seed: number, moduleEffects: Record<string, ModuleEffectVector> = {}, archetypeEffects: Partial<ArchetypeEffects> = {}, customerState?: CustomerSegments, acquisitionBoost = false): SettlementResult {
   const placement = resolvePlacement(cards);
   const activityEffectBps = placement.effects.activityBps + (archetypeEffects.activityBps ?? 0);
   const operatingEffectBps = placement.effects.operatingBps + (archetypeEffects.operatingBps ?? 0);
   const capacityEffectBps = placement.effects.capacityBps;
   const customerEffectBps = placement.effects.customerBps;
   const riskReliefEffectBps = placement.effects.riskReliefBps + (archetypeEffects.riskReliefBps ?? 0);
-  const capacityBase = cards.reduce((sum, card) => {
-    const effect = moduleEffects[card.id];
-    return sum + Math.round(specOf(card.type).customersBase * stageMul(card.stage) * (10_000 + (effect?.capacityBps ?? 0)) / 10_000);
-  }, 0);
-  const moduleWeight = cards.reduce((sum, card) => sum + Math.max(1, specOf(card.type).customersBase), 0);
-  const averageModuleEffect = (key: keyof Pick<ModuleEffectVector, "customerAcquisitionBps" | "retentionBps" | "eventResilienceBps">) => moduleWeight ? cards.reduce((sum, card) => sum + (moduleEffects[card.id]?.[key] ?? 0) * Math.max(1, specOf(card.type).customersBase), 0) / moduleWeight : 0;
-  const acquisitionBps = Math.round(averageModuleEffect("customerAcquisitionBps") + averageModuleEffect("retentionBps"));
-  const resilienceBps = Math.min(2_000, Math.max(0, Math.round(averageModuleEffect("eventResilienceBps"))));
-  const capacity = Math.max(0, Math.round(capacityBase * (10_000 + capacityEffectBps) / 10_000));
-  const demand = Math.round(capacity * (0.72 + state.reputationBps / 40_000) * event.populationBps / 10_000 * (10_000 + customerEffectBps + acquisitionBps) / 10_000);
-  const population = Math.min(capacity, Math.max(0, demand));
-  const overflowBps = capacity === 0 ? 0 : Math.max(0, Math.round((demand - capacity) * 10_000 / capacity));
+  // --- Customer dynamics: carry persisted counts (bootstrap from empty when the
+  // caller has no state, e.g. pure tests and preview consumers) ---
+  const plan = computeCustomerPlan(cards, event, state, moduleEffects, customerEffectBps);
+  const capacity = Math.max(0, Math.round(plan.capacity * (10_000 + capacityEffectBps) / 10_000));
+  const effectivePlan: CustomerPlan = capacityEffectBps === 0 ? plan : { ...plan, capacity };
+  const carried = customerState ? normalizeCustomerSegments(customerState) : emptySegments();
+  const advanced = advanceCustomers(effectivePlan, carried, 1, { boost: acquisitionBoost });
   const servicePoints = cards.reduce((sum, card) => sum + (moduleEffects[card.id]?.serviceQualityPoints ?? 0), 0);
-  const satisfactionBps = capacity === 0 ? 5_000 : clamp(8_400 + Math.round(state.reputationBps / 12) + servicePoints * 100 - Math.round(overflowBps * 0.35), 0, 10_000);
-  const segments = emptySegments();
+  const satisfactionBps = capacity === 0
+    ? 5_000
+    : clamp(8_000 + Math.round(state.reputationBps / 25) + servicePoints * 100 + advanced.step.band.satisfactionPenaltyBps, 0, 10_000);
+  const matured = applyMaturation(advanced.state, maturationContextFor(cards, event, verb, effectivePlan, satisfactionBps));
+  const segments = roundCustomerSegments(matured.state as CustomerSegments);
+  const population = Math.round(totalCustomers(segments));
+  const band = advanced.step.band;
+  // --- Per-building revenue/activity from doc Building Economics ---
   const revenue: RevenueBreakdown[] = [];
   let baseRevenue = 0;
+  let opCostTotal = 0;
   let transactions = 0;
   let volumeMinor = 0;
-  for (const card of cards) {
-    const moduleEffect = moduleEffects[card.id];
-    const cardCapacity = Math.round(specOf(card.type).customersBase * stageMul(card.stage) * (10_000 + (moduleEffect?.capacityBps ?? 0)) / 10_000);
-    const cardCustomers = capacity === 0 ? 0 : Math.round(cardCapacity * population / capacity);
-    const cardSegments = scaledSegments(segmentMix(specOf(card.type).lineage), cardCustomers);
-    addSegments(segments, cardSegments);
-    const result = revenueFor(card, cardSegments, event, verb, state.conditionBps, moduleEffect);
-    baseRevenue += result.amountMinor;
-    transactions += result.transactions;
-    volumeMinor += result.volumeMinor;
-    revenue.push({ buildingId: card.id, buildingName: specOf(card.type).name, model: result.model, amountMinor: result.amountMinor });
+  const eventRevenueMod = Math.max(0, (10_000 + (event.revenueBps ?? 0)) / 10_000);
+  const eventActivityMod = Math.max(0, event.activityBps / 10_000);
+  const conditionMod = Math.max(0, state.conditionBps / 10_000);
+  for (const building of effectivePlan.buildings) {
+    const { card, moduleEffect } = building;
+    const spec = specOf(card.type);
+    let served = 0;
+    for (const key of CUSTOMER_SEGMENT_KEYS) {
+      const target = effectivePlan.targets[key];
+      if (target > 0) served += segments[key] * (building.target[key] / target);
+    }
+    served = Math.min(served, building.capacity);
+    const utilization = building.capacity > 0 ? served / building.capacity : 0;
+    const moduleEff = Math.max(0, (10_000 + (moduleEffect?.activityEfficiencyBps ?? 0)) / 10_000);
+    const grossMinor = Math.round(
+      spec.grossCashPerHour * stageMul(card.stage) * 24 * utilization * building.weightedValue
+      * effectivePlan.operationalEfficiency * band.revenueEfficiency * eventRevenueMod * moduleEff * conditionMod * CASH_SCALE,
+    );
+    const activityPts = spec.activityPtsPerHour * stageMul(card.stage) * 24 * utilization * building.weightedActivity * eventActivityMod * moduleEff;
+    baseRevenue += grossMinor;
+    opCostTotal += Math.round(grossMinor * Math.max(0, spec.opCostBps - Math.min(12_000, Math.max(-12_000, moduleEffect?.operatingCostReductionBps ?? 0))) / 10_000);
+    transactions += Math.max(0, Math.round(activityPts));
+    volumeMinor += Math.max(0, Math.round(activityPts * CASH_SCALE));
+    revenue.push({ buildingId: card.id, buildingName: spec.name, model: revenueModel(spec.lineage), amountMinor: grossMinor });
   }
+  // --- Ledger (load-bearing semantics preserved from v1) ---
+  const moduleWeight = cards.reduce((sum, card) => sum + Math.max(1, specOf(card.type).customersBase), 0);
+  const resilienceBps = Math.min(2_000, Math.max(0, Math.round(moduleWeight
+    ? cards.reduce((sum, card) => sum + (moduleEffects[card.id]?.eventResilienceBps ?? 0) * Math.max(1, specOf(card.type).customersBase), 0) / moduleWeight
+    : 0)));
   const synergyBps = Math.max(-2_500, Math.min(2_500, operatingEffectBps));
   const synergyCount = placement.links.length;
   const synergyMinor = Math.round(baseRevenue * synergyBps / 10_000);
+  const noiseMod = seedNoiseBps(seed) / 10_000;
   const activityMultiplierBps = Math.max(0, 10_000 + activityEffectBps);
-  const activityMinor = Math.round((baseRevenue + synergyMinor) * seedNoiseBps(seed) / 10_000 * activityMultiplierBps / 10_000);
+  const grossActivityMinor = Math.round((baseRevenue + synergyMinor) * noiseMod * activityMultiplierBps / 10_000);
+  const operatingMinor = grossActivityMinor - Math.round(opCostTotal * noiseMod * activityMultiplierBps / 10_000);
   const campaignCost = verb === "campaign" && cards.length > 0 ? -150 * CASH_SCALE : 0;
   const verbMinor = Math.round((baseRevenue + synergyMinor) * (verbBps(verb, cards) - 10_000) / 10_000) + campaignCost;
   const riskRelief = riskReliefEffectBps;
@@ -287,8 +437,8 @@ export function settleDistrict(cards: PlacedCard[], event: DistrictEvent, verb: 
     return sum + risk * card.stage;
   }, 0) + Math.max(0, 7_000 - state.reputationBps) + placement.effects.riskIncreaseBps - riskRelief + Math.round(moduleRiskPoints * 100);
   const riskBps = clamp(Math.round(rawRiskBps * (10_000 + (event.riskBps ?? 0)) / 10_000), 0, 9_500);
-  const highRiskEvent = event.id === "bank_run" || event.id === "credit_squeeze" || event.id === "storm_warning";
-  const lossMinor = highRiskEvent && riskBps >= 2_600 ? -Math.min(Math.round(Math.max(0, activityMinor) * (riskBps - 2_000) / 20_000), Math.max(0, state.cashMinor)) : 0;
+  const highRiskEvent = event.id === "bank_run" || event.id === "liquidity_crunch" || event.id === "market_correction";
+  const lossMinor = highRiskEvent && riskBps >= 2_600 ? -Math.min(Math.round(Math.max(0, grossActivityMinor) * (riskBps - 2_000) / 20_000), Math.max(0, state.cashMinor)) : 0;
   // Humble buildings are the Phase 1 teaching economy; the first board must
   // show a real customer-driven Cash delta before upkeep becomes a sink.
   const upkeepMinor = cards.some((card) => specOf(card.type).era !== "humble") ? -cards.reduce((sum, card) => {
@@ -297,7 +447,7 @@ export function settleDistrict(cards: PlacedCard[], event: DistrictEvent, verb: 
     return sum + Math.max(1, Math.round(base * (10_000 - (effect?.operatingCostReductionBps ?? 0)) / 10_000));
   }, 0) : 0;
   const lines = ([
-    { reason: "operating", label: "Building revenue", amountMinor: activityMinor },
+    { reason: "operating", label: "Building revenue", amountMinor: operatingMinor },
     { reason: "adjacency", label: synergyCount ? `Synergies ×${synergyCount}` : "Synergies", amountMinor: synergyMinor },
     { reason: "verb", label: verb === "campaign" ? "Campaign spend and lift" : "Business action", amountMinor: verbMinor },
     { reason: "loss", label: "Risk loss", amountMinor: lossMinor },

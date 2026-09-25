@@ -53,17 +53,6 @@ async function waitForApi(): Promise<void> {
   throw new Error("Timed out waiting for the onboarding acceptance API");
 }
 
-async function mutateAssistFixture(playerId: string): Promise<void> {
-  await prisma.player.update({
-    where: { id: playerId },
-    data: {
-      onboardingStartedAt: Date.now() - 3 * 60_000,
-      reputationBps: -28200,
-      lastMeaningfulActionAt: Date.now(),
-    },
-  });
-}
-
 async function cleanupFixtures(): Promise<void> {
   const delegates = [
     "plotgoOnboardingMilestone", "plotgoTutorialRecoveryLedger", "card", "fragment",
@@ -116,17 +105,23 @@ async function runAcceptance(): Promise<void> {
   });
   assert(recoveryRow?.kind === "free_tutorial_relocation" && Number(recoveryRow.creditedMinor) >= 0, "relocation correction must be auditable");
 
-  const assistPlayer = playerIds[1]!;
-  await post("/api/session", { playerId: assistPlayer });
-  const assistBuild = await post("/api/plot/place", { type: "cash_kiosk", x: 0, y: 0 }, assistPlayer);
-  assert(assistBuild.cards.length === 1, "assist fixture must have one active building");
-  await mutateAssistFixture(assistPlayer);
-  const assisted = await post("/api/session/settle", { verb: "walk" }, assistPlayer);
-  assert(assisted.receipt.onboardingRecovery.includes("first_customer_assist"), "first-customer demand assist must be reported in the receipt");
-  assert(assisted.attributes.population > 0, "demand assist must create real customer state");
-  assert(assisted.onboarding.recovery.firstCustomerAssistUsed === true, "first-customer demand assist must be one-time");
+  // Canonical customer model (PLOT_Customer_Economic_Simulation_v0.1): the 24h
+  // new-player acquisition boost (3x) plus the affinity-seeded starting
+  // population guarantee first customers structurally — no demand-assist SLA
+  // path exists anymore. A fresh single-kiosk player must settle into real
+  // customer state on the very first settle, even with a damaged reputation.
+  const boostPlayer = playerIds[1]!;
+  await post("/api/session", { playerId: boostPlayer });
+  const boostBuild = await post("/api/plot/place", { type: "cash_kiosk", x: 0, y: 0 }, boostPlayer);
+  assert(boostBuild.cards.length === 1, "boost fixture must have one active building");
+  await prisma.player.update({ where: { id: boostPlayer }, data: { reputationBps: -28200 } });
+  const boosted = await post("/api/session/settle", { verb: "walk" }, boostPlayer);
+  assert(boosted.attributes.population > 0, "new-player boost must produce real customer state on the first settle even at low reputation");
+  assert(boosted.receipt.transactions > 0, "new-player boost must produce real transactions on the first settle");
+  assert(!boosted.receipt.onboardingRecovery.includes("first_customer_assist"), "the superseded demand-assist path must never fire");
+  assert(boosted.onboarding.milestones.some((milestone: JsonObject) => milestone.id === "onboarding_first_customer"), "first customer milestone must be recorded via the boost path");
 
-  console.log("onboarding acceptance passed: first-5-minute flow, synergy correction, recovery audit, and first-customer demand assist");
+  console.log("onboarding acceptance passed: first-5-minute flow, synergy correction, recovery audit, and new-player boost first customers");
 }
 
 async function main(): Promise<void> {

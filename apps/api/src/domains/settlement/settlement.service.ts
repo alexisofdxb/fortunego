@@ -4,6 +4,7 @@ import { prisma } from "../../infrastructure/postgres/client";
 import { newId, num } from "../../shared/types";
 import { MODULE_CONFIG_VERSION } from "../modules/modules.service";
 import { mapWeeklyRow, performanceMetrics, weekStartMs, type WeeklyPerformanceRow } from "../performance/performance.service";
+import { producePayoutNotifications } from "../notifications/notifications.service";
 
 /**
  * FNV-1a 32-bit over a stable JSON serialization (sorted keys, fixed field order),
@@ -31,16 +32,15 @@ function stableFrozenRowJson(row: WeeklyPerformanceRow): string {
   return JSON.stringify(Object.fromEntries(ordered));
 }
 
-/**
- * Build the frozen snapshot manifest for a week (spec sheets 10 & 13): per-source
- * counts/high-water marks, a deterministic checksum over the week's frozen
- * weekly_performance rows, and module lineage (config version + distinct loadout
- * versions referenced that week). Upserts weekly_snapshots idempotently on week;
- * a re-run whose checksum differs from the stored one is logged with [integrity]
- * and the original manifest is kept (finalized results are never silently
- * overwritten). Returns the manifest id.
- */
-async function buildWeeklySnapshotManifest(tx: Prisma.TransactionClient, week: string, rows: WeeklyPerformanceRow[]): Promise<string> {
+// --- Frozen manifest (spec sheets 10/13 + retention R8) --------------------
+// At week close (Mon 00:00 UTC job) the prior week's manifest row is created
+// in status "pending" — sources frozen at close, gameplay of the new week
+// never blocked. The admin finalize moves pending -> finalized (idempotent,
+// checksum-guarded).
+
+type ManifestSources = { sourceCursors: object; checksums: object; moduleLineage: object };
+
+async function computeManifestSources(tx: Prisma.TransactionClient, week: string, rows: WeeklyPerformanceRow[]): Promise<ManifestSources> {
   const start = weekStartMs(week);
   const end = start + 7 * 86_400_000;
   const window = { createdAt: { gte: BigInt(start), lt: BigInt(end) } };
@@ -87,19 +87,46 @@ async function buildWeeklySnapshotManifest(tx: Prisma.TransactionClient, week: s
     moduleConfigVersion: MODULE_CONFIG_VERSION,
     loadoutVersions: [...new Set([...auditVersions, ...loadoutVersions].map((row) => row.loadoutVersion))].sort((a, b) => a - b),
   };
+  return { sourceCursors, checksums, moduleLineage };
+}
+
+/**
+ * Upsert the frozen manifest for a week idempotently on week. A re-run whose
+ * checksum differs from the stored one is logged with [integrity] and the
+ * original manifest is kept (finalized results are never silently overwritten).
+ * New manifests are created in status "pending" (week close); finalize moves
+ * them to "finalized". Returns the manifest id.
+ */
+async function upsertWeeklySnapshotManifest(tx: Prisma.TransactionClient, week: string, rows: WeeklyPerformanceRow[]): Promise<string> {
   const existing = await tx.weeklySnapshot.findUnique({ where: { week } });
-  if (!existing) {
-    const id = newId();
-    await tx.weeklySnapshot.create({
-      data: { id, week, status: "finalized", sourceCursors: sourceCursors as unknown as Prisma.InputJsonValue, checksums: checksums as unknown as Prisma.InputJsonValue, moduleLineage: moduleLineage as unknown as Prisma.InputJsonValue, createdAt: Date.now() },
-    });
-    return id;
+  if (existing) {
+    const prior = (existing.checksums as { weeklyPerformance?: unknown } | null)?.weeklyPerformance;
+    const recomputed = fnv1a(JSON.stringify([...rows].sort((a, b) => a.playerId.localeCompare(b.playerId)).map(stableFrozenRowJson)));
+    if (prior !== recomputed) {
+      console.error(`[integrity] weekly snapshot checksum mismatch for week ${week}: stored=${String(prior)} recomputed=${recomputed}; keeping original manifest, not overwriting finalized results`);
+    }
+    return existing.id;
   }
-  const prior = (existing.checksums as { weeklyPerformance?: unknown } | null)?.weeklyPerformance;
-  if (prior !== checksums.weeklyPerformance) {
-    console.error(`[integrity] weekly snapshot checksum mismatch for week ${week}: stored=${String(prior)} recomputed=${checksums.weeklyPerformance}; keeping original manifest, not overwriting finalized results`);
-  }
-  return existing.id;
+  const sources = await computeManifestSources(tx, week, rows);
+  const id = newId();
+  await tx.weeklySnapshot.create({
+    data: { id, week, status: "pending", sourceCursors: sources.sourceCursors as unknown as Prisma.InputJsonValue, checksums: sources.checksums as unknown as Prisma.InputJsonValue, moduleLineage: sources.moduleLineage as unknown as Prisma.InputJsonValue, createdAt: Date.now() },
+  });
+  return id;
+}
+
+/**
+ * Week close (retention R8): create the prior week's manifest row in status
+ * "pending" with sources frozen at close. Idempotent; safe to call from the
+ * daily reset job and from admin catch-up.
+ */
+export async function ensurePendingWeeklySnapshot(week: string) {
+  return prisma.$transaction(async (tx) => {
+    const rows = (await tx.weeklyPerformance.findMany({ where: { week } })).map(mapWeeklyRow);
+    const id = await upsertWeeklySnapshotManifest(tx, week, rows);
+    const row = await tx.weeklySnapshot.findUnique({ where: { week }, select: { status: true } });
+    return { week, snapshotId: id, status: row?.status ?? "pending" };
+  });
 }
 
 /**
@@ -108,7 +135,7 @@ async function buildWeeklySnapshotManifest(tx: Prisma.TransactionClient, week: s
  * The frozen snapshot manifest is built FIRST from the frozen source rows.
  */
 export async function finalizePerformanceWeek(week: string) {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const performanceRows = await tx.weeklyPerformance.findMany({ where: { week } });
     const players = await tx.player.findMany({
       where: { id: { in: performanceRows.map((row) => row.playerId) } },
@@ -116,8 +143,9 @@ export async function finalizePerformanceWeek(week: string) {
     });
     const playerById = new Map(players.map((player) => [player.id, player]));
     const rows = performanceRows.map(mapWeeklyRow);
-    // Manifest BEFORE finalization, from the frozen source rows (spec sheet 10).
-    const snapshotId = await buildWeeklySnapshotManifest(tx, week, rows);
+    // Manifest BEFORE finalization, from the frozen source rows (spec sheet 10);
+    // created as "pending" at close, moved to "finalized" below.
+    const snapshotId = await upsertWeeklySnapshotManifest(tx, week, rows);
     const entries: { id: string; stage: MarketStage; score: number }[] = [];
     for (const row of rows) {
       const playerRow = playerById.get(row.playerId);
@@ -141,8 +169,16 @@ export async function finalizePerformanceWeek(week: string) {
       UPDATE weekly_performance SET "snapshotId" = ${snapshotId}
       WHERE week = ${week} AND "snapshotId" IS NULL
     `;
+    // Settlement pending -> finalized (conditional: re-finalize is a no-op).
+    await tx.$executeRaw`
+      UPDATE weekly_snapshots SET status = 'finalized'
+      WHERE week = ${week} AND status = 'pending'
+    `;
     return { week, players: rows.length, eligible: entries.length, totalPayout: [...payouts.values()].reduce((sum, value) => sum + value, 0), snapshotId };
   });
+  // Claimable notification, exactly once per epoch (dedupeKey payout_ready:{week}).
+  await producePayoutNotifications(week);
+  return result;
 }
 
 function parseDaysLoose(value: unknown): string[] {

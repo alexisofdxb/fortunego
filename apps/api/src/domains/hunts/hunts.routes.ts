@@ -16,6 +16,7 @@ import { prisma } from "../../infrastructure/postgres/client";
 import { addStockUnits, archetypeResolutionForPlayer, districtDay, effectiveDistrictEvent, loadFrags, operatingBoard, stockClaimGate } from "../plot/board.service";
 import { eventState } from "../events/events.service";
 import { claimMarketReservation, huntProgress, oraclePriceMinor, templateForSlot } from "./hunts.service";
+import { rerollDailyOffer, startHuntOffer } from "./offers.service";
 import { grantPendingModuleReward, moduleEffectsForBoard } from "../modules/modules.service";
 import { currentEmpireLevel, recordOnboardingMilestone } from "../player/onboarding.service";
 import { recordMeaningfulAction } from "../../shared/offline";
@@ -27,13 +28,36 @@ import { num } from "../../shared/types";
 export const huntRoutes = new Hono<AppEnv>();
 
 const HuntClaim = z.object({ huntId: z.string().optional() });
+const HuntStart = z.object({ huntId: z.string() });
+const HuntReroll = z.object({ huntId: z.string().optional() });
+
+/** Start an unstarted offer: freezes the reward and starts the real-time timer. */
+huntRoutes.post("/api/hunts/start", requirePlayer, async (c) => {
+  const id = c.get("player").id;
+  const body = HuntStart.parse(await c.req.json().catch(() => ({})));
+  const result = await startHuntOffer(id, body.huntId);
+  if ("error" in result) return c.json({ error: result.error }, result.status);
+  await recordMeaningfulAction(id, `hunt_start:${body.huntId}`);
+  return c.json({ ...(await snapshot(id)), started: body.huntId });
+});
+
+/** Free daily reroll: replaces one unstarted offer (1/day, spec sheet 05). */
+huntRoutes.post("/api/hunts/reroll", requirePlayer, async (c) => {
+  const id = c.get("player").id;
+  const body = HuntReroll.parse(await c.req.json().catch(() => ({})));
+  const result = await rerollDailyOffer(id, utcDay(), body.huntId);
+  if ("error" in result) return c.json({ error: result.error }, result.status);
+  await recordMeaningfulAction(id, "hunt:reroll");
+  return c.json(await snapshot(id));
+});
 
 huntRoutes.post("/api/hunt/claim", requirePlayer, async (c) => {
   const id = c.get("player").id;
   const p = await settlePlayer(id);
   if (!p) return c.json({ error: "no plot" }, 404);
   const body = HuntClaim.parse(await c.req.json().catch(() => ({})));
-  const slot = p.marketHunts.find((candidate) => candidate.id === body.huntId) ?? p.marketHunts.find((candidate) => candidate.status === "active" || candidate.status === "cash_fallback");
+  const slot = p.marketHunts.find((candidate) => candidate.id === body.huntId && candidate.started)
+    ?? p.marketHunts.find((candidate) => candidate.started && (candidate.status === "active" || candidate.status === "cash_fallback"));
   if (!slot) return c.json({ error: "No active Market Hunt" }, 400);
   if (slot.status === "claimed") return c.json({ error: "Already claimed" }, 400);
   if (slot.status === "expired") return c.json({ error: "Hunt expired" }, 400);

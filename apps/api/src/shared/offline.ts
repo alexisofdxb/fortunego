@@ -2,17 +2,24 @@ import { createHash } from "node:crypto";
 import {
   CARDS,
   OFFLINE_CONFIG,
+  advanceCustomers,
+  bootstrapCustomerSegments,
+  computeCustomerPlan,
+  normalizeCustomerSegments,
+  roundCustomerSegments,
   resolveType,
   seedForDay,
   settleDistrict,
   splitOfflineWindow,
   tickMinor,
+  totalCustomers,
   utcDay,
   isoWeek,
   marketStageForEmpireLevel,
   empireLevel,
   collectionBonuses,
   marketEventForDay,
+  type CustomerSegments,
   type OfflineSlice,
   type PlacedCard,
 } from "@plotgo/game";
@@ -45,6 +52,8 @@ type PresenceRow = {
   activeDays: string;
   activeMinutesDailyJson: string;
   meaningfulActionsDailyJson: string;
+  customerSegments: CustomerSegments | null;
+  acquisitionBoostUntil: number;
 };
 
 export async function presenceRow(playerId: string): Promise<PresenceRow | undefined> {
@@ -71,6 +80,8 @@ export async function presenceRow(playerId: string): Promise<PresenceRow | undef
     activeDays: JSON.stringify(row.activeDays ?? []),
     activeMinutesDailyJson: JSON.stringify(row.activeMinutesDailyJson ?? {}),
     meaningfulActionsDailyJson: JSON.stringify(row.meaningfulActionsDailyJson ?? {}),
+    customerSegments: row.customerSegments == null ? null : normalizeCustomerSegments(row.customerSegments as Partial<CustomerSegments>),
+    acquisitionBoostUntil: num(row.acquisitionBoostUntil),
   };
   const now = Date.now();
   const lastAction = presence.lastMeaningfulActionAt || presence.createdAt || now;
@@ -252,20 +263,28 @@ export async function processOfflineCatchup(playerId: string, now = Date.now()):
     const activityBps = moduleThroughputBps(board, moduleEffects, "activityEfficiencyBps");
     const operatingCostBps = Math.max(-12_000, Math.min(12_000, moduleThroughputBps(board, moduleEffects, "operatingCostReductionBps")));
     const eventMultiplier = Math.max(0, activeEvent.activityBps / 10_000) * Math.max(0, 1 + (activeEvent.revenueBps ?? 0) / 10_000);
+    // Phase 2 customer model: carry persisted segments through the offline window,
+    // advancing the doc day-stepped dynamics per bucket (pro-rata day fraction).
+    // Doc Offline Customer Acquisition Efficiency (0.5) × the offline band's
+    // customerIntensity; churn always applies. The 12h accrual cap is the
+    // retention-loop CANONICAL deviation from the doc's 8h (documented).
+    const customerPlan = computeCustomerPlan(board, activeEvent, { cashMinor: row.cashMinor, reputationBps: row.reputationBps, conditionBps: row.conditionBps }, moduleEffects);
+    let segments: CustomerSegments = row.customerSegments ?? bootstrapCustomerSegments(board);
+    const customerBoost = now < row.acquisitionBoostUntil;
     for (let index = 0; index < slices.length; index++) {
       const slice: OfflineSlice = slices[index]!;
       const bucketId = createHash("sha256").update(`${sessionId}:${slice.startAt}:${slice.endAt}`).digest("hex").slice(0, 32);
       const existingBucket = await tx.plotgoOfflineBucket.findUnique({ where: { bucketId } });
       if (existingBucket) continue;
-      const settled = settleDistrict(board, activeEvent, "walk", state, seedForDay(day, `${playerId}:${bucketId}`), moduleEffects, (await archetypeResolutionForPlayer(playerId, board)).effects);
       const hours = slice.durationMs / 3_600_000;
+      const settled = settleDistrict(board, activeEvent, "walk", state, seedForDay(day, `${playerId}:${bucketId}`), moduleEffects, (await archetypeResolutionForPlayer(playerId, board)).effects, segments, customerBoost);
+      const previousCustomers = totalCustomers(segments);
+      segments = advanceCustomers(customerPlan, segments, Math.min(1, hours / 24), { acquisitionScale: 0.5 * slice.customerIntensity, boost: customerBoost }).state;
+      const customerDelta = Math.round(totalCustomers(segments) - previousCustomers);
       const signed = settled.cashDeltaMinor < 0 ? -1 : 1;
       const normalNetPerHour = Math.round(grossPerHour * eventMultiplier * (10_000 + activityBps) / 10_000 * (10_000 - operatingCostBps) / 10_000);
       const cashDelta = signed * Math.round(normalNetPerHour * hours * slice.cashEfficiency);
-      const convergence = Math.min(1, hours / 4);
-      const rawCustomerDelta = (settled.population - state.population) * convergence;
-      const customerDelta = Math.round(rawCustomerDelta * slice.customerIntensity);
-      const nextPopulation = Math.max(0, Math.min(settled.capacity, Math.round(state.population + customerDelta)));
+      const nextPopulation = Math.max(0, Math.round(totalCustomers(segments)));
       const riskAfter = Math.max(0, Math.min(9_500, Math.round(state.riskBps + (settled.riskBps - state.riskBps) * slice.riskIntensity)));
       const reputationAfter = Math.max(0, Math.min(10_000, Math.min(state.reputationBps, settled.reputationBps)));
       const conditionAfter = Math.max(0, Math.min(10_000, Math.round(state.conditionBps + (settled.conditionBps - state.conditionBps) * slice.customerIntensity)));
@@ -316,6 +335,7 @@ export async function processOfflineCatchup(playerId: string, now = Date.now()):
         conditionBps: state.conditionBps,
         transactions: state.transactions,
         volumeMinor: state.volumeMinor,
+        customerSegments: roundCustomerSegments(segments) as object,
         offlineStartedAt: offlineStart,
         offlineProcessedUntil: processedUntil,
         lastSettleAt: processedUntil,

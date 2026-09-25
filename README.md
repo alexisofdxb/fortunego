@@ -25,7 +25,7 @@ Monorepo (pnpm workspaces), aligned with `docs/PLOT_Technology_Stack_Architectur
 
 - `apps/web` — React 18 app shell + TanStack Query + Zustand, PixiJS v8 board renderer (Vite)
 - `apps/api` — Hono modular monolith: `domains/` (thin `<name>.routes.ts` over domain services), `middleware/`, `infrastructure/` (postgres, tasks; redis/pubsub/blockchain/providers deferred), `shared/` — Zod validation, Prisma ORM
-- `packages/game` — pure deterministic simulation (no I/O); imported by api + web
+- `packages/game` — pure deterministic simulation (no I/O): the canonical customer/economic model from `docs/PLOT_Customer_Economic_Simulation_v0.1.xlsx` (7 persistent customer segments, affinity-weighted demand, acquisition/churn steady-state, congestion bands, maturation flows, 12 economic event families, doc-calibrated building economics); imported by api + web
 - `packages/shared` — Zod DTO contracts shared between api and web
 - PostgreSQL 16 via Docker Compose; migrations via Prisma
 
@@ -45,14 +45,16 @@ Web: http://localhost:5173
 API: http://localhost:8787
 Adminer: http://localhost:8080 (server `db`, user `plotgo`, password `plotgo`)
 
-Other scripts: `pnpm typecheck` · `pnpm test:balance` · `pnpm test:onboarding` · `pnpm test:visits` · `pnpm simulate:performance` · `pnpm build`
+Other scripts: `pnpm typecheck` · `pnpm test:balance` · `pnpm test:onboarding` · `pnpm test:visits` · `pnpm test:retention` · `pnpm test:customers` · `pnpm simulate:performance` · `pnpm build`
 
 ## Architecture notes
 
+- **Customer model** (`PLOT_Customer_Economic_Simulation_v0.1`, canonical): per-player persistent segment counts advance daily through acquisition/churn dynamics toward affinity-weighted building targets; the 24h new-player boost (3×) guarantees first customers; offline catch-up steps the same dynamics at band efficiencies. Deviation kept by decision: offline cap stays 12h (retention-loop canonical supersedes the doc's 8h).
 - **Server-authoritative**: all economy state lives in the API; the client renders and validates placement client-side via `packages/game`.
 - **Ledger-first**: every cash/fragment mutation is an append-only ledger entry.
 - **Idempotent settlements**: daily settle is guarded by a unique `(player, day)` session row; weekly finalize is admin-gated, re-runnable, and stamps a frozen snapshot manifest (`weekly_snapshots`: source cursors, FNV-1a checksums, module lineage refs) onto `weekly_performance` rows.
-- **Scheduler**: an in-process job runner (local stand-in for the deferred queue) handles craft completion, hunt/event expiry, market-cycle transitions, and a daily module-inventory invariant reconcile — all idempotent with jittered intervals.
+- **Scheduler**: in-process job runner — daily 00:00 UTC reset (3 hunt offers, 3 objectives, expiry, active-day finalize), craft completion, hunt/event expiry, weekly countdown, notification dispatch, and a daily module-inventory reconcile — all idempotent with jittered intervals.
+- **Retention loop** (per `docs/PLOT_Daily_Weekly_Retention_Loop_v1.0.xlsx`): 3 hunt offers/day (max 5 active, 1 free reroll), 3 daily business objectives (Operations/Growth/Market, Cash-only ≤5% of median stage earnings, server-evidence completion), eligible active-day rule (10 engaged min + 1 meaningful action; heartbeat never counts), cosmetic Operating Streak, weekly epoch with Pending→Final settlement state, deterministic announced event calendar, and a bounded notification inbox (no login rewards, no streak-loss pushes, no profit language).
 - **Rate limits**: in-memory sliding window — 120/min default, 20/min settle/claims/event choices, 30/min layout mutations (single-process; Redis later).
 - **Module lineage**: settlement ledger entries pin `moduleLoadoutVersions` + `moduleConfigVersion` whenever equipped modules affect the outcome.
 - **Identity is prototype-grade**: `x-player-id` header = the whole auth model, kept only for local dev. Replace with real auth (FamilySDK) before any deployment.

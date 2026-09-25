@@ -1,9 +1,12 @@
 import type { PlotSnapshot } from "@plotgo/shared";
 import { usePerformanceClaim } from "../api/hooks";
+import { closingBellCopy, formatCountdown } from "../utils";
 
 export function PerformancePanel({ plot }: { plot: PlotSnapshot }) {
   const claim = usePerformanceClaim();
   const performance = plot.performance;
+  const weekStatus = plot.weekStatus;
+  const bell = closingBellCopy(weekStatus);
   const rows = Object.entries(performance.components).map(([key, value]) => (
     <span key={key}>
       {key.replace(/([A-Z])/g, " $1")} <b>{Math.round(value)}</b>
@@ -12,11 +15,28 @@ export function PerformancePanel({ plot }: { plot: PlotSnapshot }) {
   return (
     <section className="performance-panel" data-onboarding-target="performance-panel">
       <div className="portfolio-heading">
-        <b>Weekly Performance · {performance.week}</b>
+        <b>
+          Weekly Performance · {performance.week}
+          {performance.finalized ? "" : " · Provisional"}
+        </b>
         <span>
           {performance.score}/120 · {plot.plotBalance.toLocaleString()} $PLOT
         </span>
       </div>
+      {bell && !performance.finalized ? (
+        <div className={`closing-bell ${bell.tone}`}>
+          <b>{bell.label}</b>
+          <span>
+            {bell.detail}
+            {weekStatus && weekStatus.status === "open" ? ` Closes in ${formatCountdown(weekStatus.msUntilClose)}.` : ""}
+          </span>
+          {bell.showEligibility ? (
+            <span className="closing-bell-eligibility">
+              Active days {performance.activeDays}/3 — eligibility needs 3 eligible days this week.
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <div className="performance-stats">{rows}</div>
       <small className="settled">
         {plot.pendingPayout

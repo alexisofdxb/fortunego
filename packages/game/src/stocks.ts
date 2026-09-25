@@ -9,6 +9,8 @@ import {
 
 export {
   DIFFICULTY_RULES,
+  chooseDifficulty,
+  chooseDifficultyForAccount,
   MARKET_COLLECTIONS,
   MARKET_EVENT_RULES,
   MARKET_HUNTS,

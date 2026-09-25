@@ -34,9 +34,78 @@ export type CardSpec = {
   description: string;
   /** Previous building in this institution's progression line; informational only and never an unlock gate. */
   progressionFrom: string | null;
+  // --- PLOT_Customer_Economic_Simulation_v0.1 (Building Economics sheet) ---
+  /** Level-1 customer capacity (doc Building Economics). */
+  lv1Capacity: number;
+  /** Base gross Cash per hour at level 1 (doc). */
+  grossCashPerHour: number;
+  /** Base activity points per hour at level 1 (doc). */
+  activityPtsPerHour: number;
+  /** Operating cost as a share of gross, in bps (12% Humble → 17% Tycoon). */
+  opCostBps: number;
+  /** Attraction multiplier by stage (0.90 Humble → 1.35 Tycoon). */
+  attractionMult: number;
 };
 
 const C = CASH_SCALE;
+
+/**
+ * Doc Building Economics calibration per building id, in BUILDING_LIST order:
+ * [lv1Capacity, grossCashPerHour, activityPtsPerHour, opCostBps, attractionMult].
+ * Capacity 60 → 301,962; op cost 12% → 17% by stage; attraction 0.90/0.98/1.06/1.15/1.25/1.35.
+ */
+const DOC_BUILDING_ECONOMICS: Record<string, readonly [number, number, number, number, number]> = {
+  cash_kiosk: [60, 35, 6, 1200, 0.9],
+  trading_booth: [71, 50, 10, 1200, 0.9],
+  savings_stand: [85, 53, 10, 1200, 0.9],
+  mini_brokerage: [101, 67, 14, 1200, 0.9],
+  market_info: [120, 55, 12, 1200, 0.9],
+  micro_loan: [143, 94, 17, 1200, 0.9],
+  fx_stand: [170, 114, 22, 1200, 0.9],
+  insurance_desk: [203, 119, 21, 1200, 0.9],
+  advice_booth: [241, 139, 26, 1200, 0.9],
+  cash_locker: [287, 142, 26, 1200, 0.9],
+  neighborhood_shop: [342, 228, 41, 1300, 0.98],
+  small_brokerage: [407, 288, 56, 1300, 0.98],
+  local_savings: [484, 330, 58, 1300, 0.98],
+  microfinance: [576, 410, 69, 1300, 0.98],
+  trading_room: [685, 528, 99, 1300, 0.98],
+  small_research: [815, 417, 78, 1300, 0.98],
+  local_insurance: [970, 629, 99, 1300, 0.98],
+  treasury_office: [1155, 633, 104, 1300, 0.98],
+  small_fund: [1374, 1081, 173, 1300, 0.98],
+  services_hub: [1635, 1331, 216, 1300, 0.98],
+  community_bank: [1946, 1490, 234, 1400, 1.06],
+  brokerage_house: [2315, 1893, 319, 1400, 1.06],
+  advisory_firm: [2755, 1920, 298, 1400, 1.06],
+  asset_office: [3279, 2801, 413, 1400, 1.06],
+  research_center: [3902, 2304, 375, 1400, 1.06],
+  lending_center: [4643, 3994, 557, 1400, 1.06],
+  wealth_office: [5526, 4794, 630, 1400, 1.06],
+  digital_hub: [6575, 5585, 907, 1400, 1.06],
+  trading_house: [7825, 7604, 1127, 1400, 1.06],
+  private_vault: [9311, 6291, 838, 1400, 1.06],
+  regional_bank: [11081, 10181, 1330, 1500, 1.15],
+  stock_brokerage: [13186, 12978, 1820, 1500, 1.15],
+  fund_hq: [15691, 15911, 1977, 1500, 1.15],
+  insurance_hq: [18672, 16410, 1905, 1500, 1.15],
+  data_center: [22220, 17281, 2400, 1500, 1.15],
+  market_maker: [26442, 29350, 3808, 1500, 1.15],
+  private_bank: [31466, 34373, 3398, 1500, 1.15],
+  corp_treasury: [37445, 29854, 3370, 1500, 1.15],
+  securities_exchange: [44559, 54226, 6684, 1500, 1.15],
+  investment_bank: [53025, 64791, 6363, 1500, 1.15],
+  global_brokerage: [63100, 75258, 8708, 1600, 1.25],
+  major_am: [75089, 92468, 9461, 1600, 1.25],
+  inst_trading: [89356, 116815, 12867, 1600, 1.25],
+  global_wealth: [106334, 131889, 12122, 1600, 1.25],
+  exchange_tower: [126537, 176369, 18981, 1600, 1.25],
+  intl_bank: [150579, 191814, 18069, 1700, 1.35],
+  global_ib: [179189, 257058, 21503, 1700, 1.35],
+  sovereign_fund: [213235, 301842, 26868, 1700, 1.35],
+  world_exchange: [253750, 388694, 38062, 1700, 1.35],
+  empire_hq: [301962, 456881, 39859, 1700, 1.35],
+};
 
 /**
  * Standing visit-fee rate per lineage (spec engine 3, bps on the action notional).
@@ -73,6 +142,8 @@ function b(
   description: string,
   progressionFrom: string | null,
 ): CardSpec {
+  const doc = DOC_BUILDING_ECONOMICS[id];
+  if (!doc) throw new Error(`Missing doc Building Economics calibration for ${id}`);
   return {
     id,
     name,
@@ -86,6 +157,11 @@ function b(
     blurb,
     description,
     progressionFrom,
+    lv1Capacity: doc[0],
+    grossCashPerHour: doc[1],
+    activityPtsPerHour: doc[2],
+    opCostBps: doc[3],
+    attractionMult: doc[4],
   };
 }
 

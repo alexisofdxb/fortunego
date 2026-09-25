@@ -237,6 +237,29 @@ export function weightedChoice<T>(items: readonly T[], weights: readonly number[
   return items[items.length - 1]!;
 }
 
+/** Difficulty draw from the stage mix (canonical weights, deterministic seed). */
+export function chooseDifficulty(stage: MarketStage, seed: number): HuntDifficulty {
+  const rule = STAGE_RULES[stage];
+  const entries = Object.entries(rule.difficultyMix) as [HuntDifficulty, number][];
+  const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
+  let cursor = ((seed % 1_000_000) / 1_000_000) * total;
+  for (const [difficulty, weight] of entries) {
+    cursor -= weight;
+    if (cursor <= 0) return difficulty;
+  }
+  return "easy";
+}
+
+/**
+ * Account-age rule (retention spec sheet 05): during the first 3 account days
+ * only Easy / Standard hunts may be offered, regardless of the stage mix.
+ */
+export function chooseDifficultyForAccount(stage: MarketStage, seed: number, accountAgeDays: number): HuntDifficulty {
+  const difficulty = chooseDifficulty(stage, seed);
+  if (accountAgeDays < 3 && difficulty !== "easy" && difficulty !== "standard") return "standard";
+  return difficulty;
+}
+
 export function chooseRarity(difficulty: HuntDifficulty, seed: number): RewardRarity {
   const rule = DIFFICULTY_RULES[difficulty];
   return weightedChoice(Object.keys(rule.rarityOdds) as RewardRarity[], Object.values(rule.rarityOdds), seed);

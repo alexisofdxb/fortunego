@@ -5,12 +5,11 @@ import {
   EVENT_CATALOG,
   EVENT_CATALOG_COUNT,
   EVENT_DECISIONS,
-  MARKET_HUNTS,
-  MARKET_STOCKS,
-  REWARD_VALUES_MINOR,
   STAGE_RULES,
+  announcedWindowsForWeek,
   buildingModuleProfile,
   collectionBonuses,
+  currentAnnouncedWindow,
   empireValueMinor,
   displayCash,
   EMPIRE_ARCHETYPES,
@@ -18,41 +17,35 @@ import {
   isoWeek,
   marketEventForDay,
   marketStageForEmpireLevel,
-  marketStageIndex,
   moduleRewardLabel,
+  normalizeCustomerSegments,
   resolvePlacement,
   resolveType,
-  rollHuntModuleReward,
-  seedForDay,
   settleDistrict,
   tickMinor,
   utcDay,
+  type CustomerSegments,
   type PlacedCard,
 } from "@plotgo/game";
 import { prisma } from "../infrastructure/postgres/client";
-import { newId, num, parseDays, parseNumberMap } from "./types";
+import { num, parseDays, parseNumberMap } from "./types";
 import { archetypeResolutionForPlayer, districtDay, effectiveDistrictEvent, loadCards, loadFrags, operatingBoard, positionRows, sessionFor, stockClaimGate } from "../domains/plot/board.service";
 import { eventState, missionView } from "../domains/events/events.service";
 import { ensureOpeningLedger } from "../domains/economy/ledger.service";
 import {
-  chooseDifficulty,
-  chooseStock,
-  ensureMarketPool,
-  huntAchievable,
   huntProgress,
-  loadMarketHunts,
   marketHuntRow,
   poolConsumption,
-  realisticTarget,
-  releaseMarketReservation,
-  reserveMarketReward,
-  seedMix,
   templateForSlot,
-  throttledRarity,
   type MarketHuntSlot,
 } from "../domains/hunts/hunts.service";
+import { spawnDailyOffers, expireStaleOffers } from "../domains/hunts/offers.service";
+import { ensureDailyObjectives, evaluateObjectives } from "../domains/objectives/objectives.service";
+import { unreadNotificationCount } from "../domains/notifications/notifications.service";
+import { dailyFlag } from "./daily-state";
+import { weekStartMs } from "../domains/performance/performance.service";
 import { moduleEffectsForBoard, moduleInventoryRows, moduleLoadoutSummaries, modulePartsRows, MODULE_CONFIG_VERSION, moduleEntry, pendingModuleRewards } from "../domains/modules/modules.service";
-import { currentEmpireLevel, hasTutorialCashAccessSynergy, onboardingMilestoneRows, onboardingSnapshot, recordOnboardingMilestone } from "../domains/player/onboarding.service";
+import { currentEmpireLevel, hasTutorialCashAccessSynergy, onboardingSnapshot, recordOnboardingMilestone } from "../domains/player/onboarding.service";
 import { offlineSummaryRow, presenceRow, processOfflineCatchup } from "./offline";
 import { performanceSnapshot, weeklyPerformanceRow } from "../domains/performance/performance.service";
 
@@ -82,6 +75,10 @@ export type SettledPlayer = {
   board: PlacedCard[];
   marketHunts: MarketHuntSlot[];
   activeDays: string[];
+  /** Persisted per-segment customer counts (null until the first settle under the Phase 2 model). */
+  customerSegments: CustomerSegments | null;
+  /** New-player 3× acquisition boost window end (ms epoch). */
+  acquisitionBoostUntil: number;
 };
 
 export async function settlePlayer(playerId: string): Promise<SettledPlayer | null> {
@@ -121,82 +118,40 @@ export async function settlePlayer(playerId: string): Promise<SettledPlayer | nu
     board,
     marketHunts,
     activeDays: parseDays(activeDaysRow?.activeDays),
+    customerSegments: p.customerSegments == null ? null : normalizeCustomerSegments(p.customerSegments as Partial<CustomerSegments>),
+    acquisitionBoostUntil: num(p.acquisitionBoostUntil),
   };
 }
 
+/**
+ * Canonical offer-board convergence (retention spec sheet 05): expire stale
+ * hunts/offers, then spawn exactly 3 offers for (player, day) — idempotent by
+ * (player, day), callable from the daily reset job and this lazy snapshot
+ * path. Returns today's offers plus any cross-day STARTED hunts (started
+ * hunts keep their own real-time expiry; max 5 ACTIVE).
+ */
 export async function ensureMarketHunts(playerId: string, board: PlacedCard[], portfolio: Record<string, number>, day: string): Promise<MarketHuntSlot[]> {
+  await expireStaleOffers(playerId, day);
+  await spawnDailyOffers(playerId, day);
+  return loadVisibleHunts(playerId, day);
+}
+
+/** Today's offers + still-running started hunts from earlier UTC days. */
+export async function loadVisibleHunts(playerId: string, day: string): Promise<MarketHuntSlot[]> {
   const now = Date.now();
-  await prisma.$transaction(async (tx) => {
-    const expired = await tx.marketHuntSlot.findMany({ where: { playerId, status: "active", expiresAt: { lte: now } } });
-    for (const row of expired) {
-      const updated = await tx.marketHuntSlot.updateMany({ where: { id: row.id, status: "active", expiresAt: { lte: now } }, data: { status: "expired" } });
-      if (updated.count === 1) await releaseMarketReservation(marketHuntRow(row));
-    }
+  const rows = await prisma.marketHuntSlot.findMany({
+    where: {
+      playerId,
+      OR: [
+        { issuedDay: day },
+        { started: true, status: { in: ["active", "cash_fallback"] } },
+      ],
+    },
+    orderBy: { issuedAt: "asc" },
   });
-  const week = isoWeek(new Date(`${day}T00:00:00Z`));
-  await ensureMarketPool(week);
-  const activeBoard = operatingBoard(board);
-  const stage = marketStageForEmpireLevel((await currentEmpireLevel(playerId, activeBoard)));
-  const stageRule = STAGE_RULES[stage];
-  const marketEvent = marketEventForDay(day, playerId);
-  const bonuses = collectionBonuses(portfolio);
-  const placement = resolvePlacement(activeBoard);
-  const created = await prisma.player.findUnique({ where: { id: playerId }, select: { createdAt: true } });
-  const events = await eventState(playerId, activeBoard, stage, num(created?.createdAt ?? now));
-  const desired = Math.min(5, Math.ceil((stageRule.baseHunts + stageRule.bonusHunts) * marketEvent.spawnMultiplier * events.global.huntSpawnMultiplier * (1 + (bonuses.researchSpawnBps + placement.effects.huntSpawnBps + events.modifiers.huntSpawnBps) / 10_000)));
-  const existing = await loadMarketHunts(playerId, day);
-  const seen = new Set(existing.map((slot) => slot.templateId));
-  const createCount = Math.max(0, desired - existing.length);
-  for (let i = 0; i < createCount; i++) {
-    const seed = seedMix(seedForDay(day, playerId), existing.length + i);
-    const difficulty = chooseDifficulty(stage, seed);
-    const eligible = MARKET_HUNTS.filter((hunt) => marketStageIndex(hunt.minStage) <= marketStageIndex(stage) && hunt.difficulty === difficulty && !seen.has(hunt.id) && huntAchievable(hunt, activeBoard));
-    const fallback = MARKET_HUNTS.filter((hunt) => marketStageIndex(hunt.minStage) <= marketStageIndex(stage) && !seen.has(hunt.id) && huntAchievable(hunt, activeBoard));
-    const pool = eligible.length ? eligible : fallback;
-    if (!pool.length) break;
-    const tutorialOpen = !(await onboardingMilestoneRows(playerId)).some((row) => row.milestoneId === "onboarding_first_hunt_open");
-    const tutorialTemplate = MARKET_HUNTS.find((hunt) => hunt.id === "first_customers");
-    const template = tutorialOpen && tutorialTemplate && !seen.has(tutorialTemplate.id) && huntAchievable(tutorialTemplate, activeBoard)
-      ? tutorialTemplate
-      : pool[seed % pool.length]!;
-    seen.add(template.id);
-    const rarity = tutorialOpen ? "common" : await throttledRarity(week, template.difficulty, seedMix(seed, 11), marketEvent.rewardRarityShift, bonuses.researchQualityBps + placement.effects.huntQualityBps, template.rewardBias);
-    const rewardValueMinor = REWARD_VALUES_MINOR[rarity];
-    const moduleReward = rollHuntModuleReward(template.difficulty, seedMix(seed, 23), template.family);
-    const stock = tutorialOpen ? MARKET_STOCKS.find((candidate) => candidate.ticker === "AAPL") ?? chooseStock(template.stockAffinity, `${marketEvent.stockBias},${events.global.stockBias}`, stage, seedMix(seed, 17)) : chooseStock(template.stockAffinity, `${marketEvent.stockBias},${events.global.stockBias}`, stage, seedMix(seed, 17));
-    const paused = (await poolConsumption(week)) >= 0.95;
-    const reserved = !paused && await reserveMarketReward(week, stock.ticker, rewardValueMinor);
-    const adjustedTarget = realisticTarget(template, template.target < 1
-      ? Number((template.target * marketEvent.targetMultiplier).toFixed(3))
-      : Math.max(1, Math.round(template.target * marketEvent.targetMultiplier * (1 + Math.max(-0.25, Math.min(0.25, events.modifiers.demandBps / 10_000))))), activeBoard);
-    const issuedAt = now + i;
-    await prisma.marketHuntSlot.create({
-      data: {
-        id: newId(),
-        playerId,
-        issuedDay: day,
-        week,
-        templateId: template.id,
-        difficulty: template.difficulty,
-        rewardRarity: rarity,
-        stockTicker: reserved ? stock.ticker : null,
-        rewardValueMinor,
-        moduleRewardKind: moduleReward?.kind ?? null,
-        moduleRewardRarity: moduleReward?.rarity ?? null,
-        moduleRewardModuleId: moduleReward?.moduleId ?? null,
-        moduleRewardQuantity: moduleReward?.quantity ?? 0,
-        moduleRewardParts: moduleReward?.partsAmount ?? 0,
-        points: template.points,
-        target: adjustedTarget,
-        issuedAt,
-        expiresAt: issuedAt + template.durationHours * 3_600_000,
-        status: reserved ? "active" : "cash_fallback",
-        reservedMinor: reserved ? rewardValueMinor : 0,
-      },
-    });
-    if (tutorialOpen && activeBoard.length > 0 && template.id === "first_customers") await recordOnboardingMilestone(playerId, "onboarding_first_hunt_open", "market_hunt.issue", now);
-  }
-  return loadMarketHunts(playerId, day);
+  return rows
+    .filter((row) => row.status !== "expired" && (row.started ? num(row.expiresAt) > now : row.issuedDay === day))
+    .map(marketHuntRow);
 }
 
 
@@ -288,6 +243,8 @@ export async function snapshot(playerId: string, moveTxId?: string) {
     dayData.seed,
     moduleEffects,
     archetype.effects,
+    p.customerSegments ?? undefined,
+    Date.now() < p.acquisitionBoostUntil,
   );
   const hunts = p.marketHunts.map((slot) => {
     const template = templateForSlot(slot);
@@ -307,10 +264,11 @@ export async function snapshot(playerId: string, moveTxId?: string) {
       points: slot.points,
       expiresAt: slot.expiresAt,
       status: slot.status,
+      started: slot.started,
       claimed: slot.status === "claimed",
       progress,
-      ready: slot.status === "active" && progress.done && (!slot.stockTicker || gate.eligible),
-      claimBlockedReason: slot.stockTicker && !gate.eligible ? gate.reason : null,
+      ready: slot.started && slot.status === "active" && progress.done && (!slot.stockTicker || gate.eligible),
+      claimBlockedReason: slot.started && slot.stockTicker && !gate.eligible ? gate.reason : null,
     };
   });
   if (progressionLevel >= 4) await recordOnboardingMilestone(playerId, "onboarding_first_hunt_open", "hunt.available");
@@ -324,6 +282,24 @@ export async function snapshot(playerId: string, moveTxId?: string) {
     orderBy: { week: "desc" },
     select: { week: true, payoutPlot: true },
   });
+  // --- Retention loop read model (additive; spec sheets 05/07/08/09/10/14) ---
+  const playerDailyState = await prisma.playerDailyState.findUnique({ where: { playerId_day: { playerId, day } } });
+  const activeHuntCount = hunts.filter((slot) => slot.started && (slot.status === "active" || slot.status === "cash_fallback")).length;
+  await ensureDailyObjectives(playerId, day, stage, {
+    population: metrics.population,
+    capacity: metrics.capacity,
+    cardCount: activeBoard.length,
+  });
+  const objectives = await evaluateObjectives(playerId, day);
+  const nowMs = Date.now();
+  const announced = announcedWindowsForWeek(week);
+  const weekClosesAt = weekStartMs(week) + 7 * 86_400_000;
+  const priorWeek = isoWeek(new Date(nowMs - 7 * 86_400_000));
+  const [currentManifest, priorManifest] = await Promise.all([
+    prisma.weeklySnapshot.findUnique({ where: { week }, select: { status: true } }),
+    prisma.weeklySnapshot.findUnique({ where: { week: priorWeek }, select: { status: true } }),
+  ]);
+  const streakRow = await prisma.player.findUnique({ where: { id: playerId }, select: { operatingStreak: true, longestStreak: true } });
   return {
     playerId,
     founder: true,
@@ -381,6 +357,29 @@ export async function snapshot(playerId: string, moveTxId?: string) {
     collections,
     hunts,
     hunt: hunts[0] ?? null,
+    activeHuntCount,
+    rerollAvailable: !(playerDailyState?.huntRerolled ?? false),
+    huntOffers: hunts.filter((slot) => !slot.started),
+    objectives: {
+      day,
+      rerollAvailable: !(playerDailyState?.objectiveRerolled ?? false),
+      lanes: objectives,
+    },
+    eventCalendar: {
+      week,
+      current: currentAnnouncedWindow(week, nowMs),
+      announced,
+    },
+    weekStatus: {
+      week,
+      status: (currentManifest?.status ?? "open") as "open" | "pending" | "finalized",
+      closesAt: weekClosesAt,
+      msUntilClose: Math.max(0, weekClosesAt - nowMs),
+      priorWeek: { week: priorWeek, status: priorManifest?.status ?? "open" },
+    },
+    operatingStreak: streakRow?.operatingStreak ?? 0,
+    longestStreak: streakRow?.longestStreak ?? 0,
+    notificationsUnread: await unreadNotificationCount(playerId),
     tickMinor: tickMinor(p.board),
     event: dayData.event,
     marketEvent,

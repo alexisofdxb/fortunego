@@ -1,5 +1,5 @@
 import { marketEventForDay, type MarketEventRule } from "./market_phase3.ts";
-import { seedForDay } from "./events.ts";
+import { seedForDay } from "./economic_events.ts";
 
 export const PHASE4_ANNUAL_AUM_FEE_BPS = 150;
 export const PHASE4_DAILY_MARK_CAP_BPS = 500;

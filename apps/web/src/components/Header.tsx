@@ -1,4 +1,5 @@
 import type { PlotSnapshot } from "@plotgo/shared";
+import { NotificationBell } from "./NotificationBell";
 
 export function Header({ plot }: { plot: PlotSnapshot }) {
   return (
@@ -16,6 +17,7 @@ export function Header({ plot }: { plot: PlotSnapshot }) {
           <span>Empire</span>
           <b>{plot.empireValue}</b>
         </div>
+        <NotificationBell unread={plot.notificationsUnread} />
       </div>
     </header>
   );
