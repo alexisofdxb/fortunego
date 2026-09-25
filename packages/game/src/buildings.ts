@@ -28,6 +28,8 @@ export type CardSpec = {
   placeCostMinor: number;
   baseMinorPerTick: number;
   customersBase: number;
+  /** Visit fee rate in bps, applied to the action's simulated notional. */
+  rateBps: number;
   blurb: string;
   description: string;
   /** Previous building in this institution's progression line; informational only and never an unlock gate. */
@@ -35,6 +37,28 @@ export type CardSpec = {
 };
 
 const C = CASH_SCALE;
+
+/**
+ * Standing visit-fee rate per lineage (spec engine 3, bps on the action notional).
+ * Exchanges undercut brokerages; funds charge a daily management fee; bank/lend
+ * quote a loan spread. Lineages outside the visit action set rate 0.
+ */
+const LINEAGE_RATE_BPS: Record<Lineage, number> = {
+  bank: 40,
+  trade: 25,
+  broker: 20,
+  fund: 150,
+  research: 0,
+  lend: 60,
+  insure: 0,
+  vault: 0,
+  wealth: 0,
+  treasury: 0,
+  digital: 0,
+  exchange: 18,
+  ib: 0,
+  empire: 0,
+};
 
 function b(
   id: string,
@@ -58,6 +82,7 @@ function b(
     placeCostMinor: cost * C,
     baseMinorPerTick: tick * C,
     customersBase: customers,
+    rateBps: LINEAGE_RATE_BPS[lineage],
     blurb,
     description,
     progressionFrom,

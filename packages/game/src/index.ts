@@ -185,6 +185,23 @@ export {
 export { CANONICAL_MODULE_CATALOG, type CanonicalModuleCatalogEntry } from "./module_catalog.ts";
 export { OFFLINE_CONFIG, offlineBandAtElapsedHours, offlineStateForAwayMinutes, splitOfflineWindow, type OfflineBand, type OfflineSlice } from "./offline_economy.ts";
 export { EMPIRE_ARCHETYPES, resolveArchetype, type ArchetypeEffects, type ArchetypeResolution, type EmpireArchetype } from "./archetypes.ts";
+export {
+  INVEST_MAX_MINOR,
+  INVEST_MIN_MINOR,
+  INVEST_SHARE_BPS,
+  INVEST_TERM_DAYS,
+  VISIT_ACTIONS,
+  VISIT_ACTION_LINEAGES,
+  VISIT_NOTIONAL_MINOR,
+  investAmountOk,
+  investMaturesDay,
+  investYieldMinor,
+  utcDaysBetween,
+  visitEligible,
+  visitFeeMinor,
+  visitSpec,
+  type VisitAction,
+} from "./visits.ts";
 
 import { BOARD, CASH_SCALE, SETTLE_MS } from "./constants.ts";
 import { CARDS, resolveType } from "./buildings.ts";

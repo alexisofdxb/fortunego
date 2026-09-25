@@ -14,21 +14,61 @@ This is the first paid product, not the full city map and not `$PLOT` redemption
 - Ten in-game stock fragments
 - Empire Value
 - Weekly Empire Score with calibrated payout flow
+- Phase 5 player economy: visit another founder's plot (trade / deposit / borrow, one per visitor-host UTC day, fee + notional credited to the host in one transaction) and visitor investment (revenue share, principal guaranteed, host keeps the capital, 3-day term) with a privacy-filtered public board read model and empire / cash_7d / reputation leaderboards
 - Persistence by player id
 
 Charge is for the **Plot**, $15–$25, later. Dev grants a Founder Plot on first session.
 
-## Run
-
-```bash
-cd /Users/crayandre/Desktop/Development/PlotGo
-pnpm install
-pnpm dev
-```
-
-Web: http://localhost:5173  
-API: http://localhost:8787
-
 ## Stack
 
-Vite + TypeScript board, Hono API, SQLite ledger. PixiJS comes in when hunts need motion. Family `payments.charge` is the checkout adapter, not the save.
+Monorepo (pnpm workspaces), aligned with `docs/PLOT_Technology_Stack_Architecture_v1.0.xlsx`:
+
+- `apps/web` — React 18 app shell + TanStack Query + Zustand, PixiJS v8 board renderer (Vite)
+- `apps/api` — Hono modular monolith: `domains/` (thin `<name>.routes.ts` over domain services), `middleware/`, `infrastructure/` (postgres, tasks; redis/pubsub/blockchain/providers deferred), `shared/` — Zod validation, Prisma ORM
+- `packages/game` — pure deterministic simulation (no I/O); imported by api + web
+- `packages/shared` — Zod DTO contracts shared between api and web
+- PostgreSQL 16 via Docker Compose; migrations via Prisma
+
+## Run
+
+Prereqs: Node ≥ 20.19, pnpm 10, Docker.
+
+```bash
+cp .env.example .env          # then edit ADMIN_TOKEN
+docker compose up -d db       # PostgreSQL on localhost:5434 (+ Adminer on 8080)
+pnpm install
+pnpm db:push                  # prisma migrate dev
+pnpm dev                      # api :8787 + web :5173
+```
+
+Web: http://localhost:5173
+API: http://localhost:8787
+Adminer: http://localhost:8080 (server `db`, user `plotgo`, password `plotgo`)
+
+Other scripts: `pnpm typecheck` · `pnpm test:balance` · `pnpm test:onboarding` · `pnpm test:visits` · `pnpm simulate:performance` · `pnpm build`
+
+## Architecture notes
+
+- **Server-authoritative**: all economy state lives in the API; the client renders and validates placement client-side via `packages/game`.
+- **Ledger-first**: every cash/fragment mutation is an append-only ledger entry.
+- **Idempotent settlements**: daily settle is guarded by a unique `(player, day)` session row; weekly finalize is admin-gated, re-runnable, and stamps a frozen snapshot manifest (`weekly_snapshots`: source cursors, FNV-1a checksums, module lineage refs) onto `weekly_performance` rows.
+- **Scheduler**: an in-process job runner (local stand-in for the deferred queue) handles craft completion, hunt/event expiry, market-cycle transitions, and a daily module-inventory invariant reconcile — all idempotent with jittered intervals.
+- **Rate limits**: in-memory sliding window — 120/min default, 20/min settle/claims/event choices, 30/min layout mutations (single-process; Redis later).
+- **Module lineage**: settlement ledger entries pin `moduleLoadoutVersions` + `moduleConfigVersion` whenever equipped modules affect the outcome.
+- **Identity is prototype-grade**: `x-player-id` header = the whole auth model, kept only for local dev. Replace with real auth (FamilySDK) before any deployment.
+- Admin endpoints (`POST /api/performance/finalize`) require `Authorization: Bearer $ADMIN_TOKEN`.
+
+## Roadmap (deferred from the target architecture doc)
+
+- FamilySDK auth bridge (signed sessions + wallet linking) — the one deliberately un-closed spec gap
+- Redis + BullMQ durable queue (the in-process scheduler is the local stand-in)
+- Socket.IO realtime pushes (currently 10s polling)
+- Blockchain settlement (`$PLOT` ERC-20, stock-fragment ERC-1155)
+- External stock prices (docs/PlotGo.md Phase 7) and friends/deals/market cycles (Phase 8)
+- Investor cancel, investment insurance, invest-into-portfolio (fund marks)
+- GCP → VPS deployment (compose file is local-dev shaped)
+- Phase 5 follow-up: weight `playerRevenueMinor` (1.5× per spec) and `investYieldMinor` into the performance score (columns are recorded; recalibrating `PERFORMANCE_RUNTIME_TARGETS` + balance tests is deferred)
+- Spec P1+ scope: 6-category risk model, leagues/seasons/rating, integrity-case workflow, phased settlement state machine (snapshot→reconcile→finalize runs inline today)
+- CI: onboarding acceptance needs a Postgres service container
+
+See `docs/AUDIT.md` for the full audit and `docs/` for the design workbooks.

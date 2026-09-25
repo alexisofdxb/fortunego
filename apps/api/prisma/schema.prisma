@@ -1,0 +1,551 @@
+// PlotGo database schema — PostgreSQL via Prisma.
+// Mirrors the former apps/api/src/db.ts DDL (fresh start, no SQLite migration).
+// Conventions: epoch-ms timestamps and minor-unit money are BigInt; bps/flags are Int/Boolean;
+// JSON blobs stored as Json. Ledgers are insert-only by application convention.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Player {
+  id                     String   @id
+  createdAt              BigInt
+  founder                Boolean  @default(true)
+  cashMinor              BigInt
+  earnedMinor            BigInt   @default(0)
+  lastSettleAt           BigInt
+  exchangeActionsToday   Int      @default(0)
+  huntDay                String
+  huntId                 String
+  huntClaimed            Boolean  @default(false)
+  weeklyScore            Int      @default(0)
+  riskBps                Int      @default(700)
+  reputationBps          Int      @default(5000)
+  conditionBps           Int      @default(10000)
+  population             Int      @default(0)
+  capacity               Int      @default(0)
+  satisfactionBps        Int      @default(5000)
+  transactions           Int      @default(0)
+  volumeMinor            BigInt   @default(0)
+  activeDays             Json     @default("[]")
+  plotBalance            BigInt   @default(0)
+  lastMeaningfulActionAt BigInt   @default(0)
+  offlineStartedAt       BigInt   @default(0)
+  offlineProcessedUntil  BigInt   @default(0)
+  presenceState          String   @default("engaged")
+  offlineSessionId       String?
+  activeMinutesDailyJson Json     @default("{}")
+  meaningfulActionsDailyJson Json @default("{}")
+  onboardingSessionId    String?
+  onboardingStartedAt    BigInt?
+  onboardingStep         String   @default("welcome")
+  onboardingStatus       String   @default("active")
+  onboardingXp           Int      @default(0)
+  onboardingCompletedAt  BigInt?
+  onboardingSkippedAt    BigInt?
+  firstCustomerAssistUsed    Boolean @default(false)
+  freeTutorialRelocationUsed Boolean @default(false)
+  personalEventProtectionUntil BigInt @default(0)
+  archetype              String?
+  archetypeChangedAt     BigInt?
+
+  @@map("players")
+}
+
+model PlotgoOnboardingMilestone {
+  playerId    String
+  milestoneId String
+  xp          Int    @default(0)
+  sourceEvent String
+  achievedAt  BigInt
+
+  @@id([playerId, milestoneId])
+  @@map("plotgo_onboarding_milestones")
+}
+
+model PlotgoTutorialRecoveryLedger {
+  id          String  @id
+  playerId    String
+  kind        String
+  creditedMinor BigInt @default(0)
+  sourceEvent String
+  metadataJson Json
+  createdAt   BigInt
+
+  @@unique([playerId, kind])
+  @@map("plotgo_tutorial_recovery_ledger")
+}
+
+model Card {
+  id              String  @id
+  playerId        String
+  type            String
+  x               Int
+  y               Int
+  stage           Int
+  orientation     Int     @default(0)
+  placedAt        BigInt  @default(0)
+  operationalUntil BigInt @default(0)
+
+  @@index([playerId])
+  @@map("cards")
+}
+
+model Fragment {
+  playerId   String
+  ticker     String
+  unitsBps   Int
+  unitsMicros BigInt?
+
+  @@id([playerId, ticker])
+  @@map("fragments")
+}
+
+model PlotgoPosition {
+  playerId     String
+  ticker       String
+  weightBps    Int    @default(0)
+  allocatedMinor BigInt @default(0)
+  markBps      Int    @default(0)
+  lastMarkDay  String @default("")
+  effectiveDay String @default("")
+  updatedAt    BigInt
+
+  @@id([playerId, ticker])
+  @@map("plotgo_position")
+}
+
+model MarketRewardPool {
+  week            String
+  ticker          String
+  allocatedMinor  BigInt
+  reservedMinor   BigInt @default(0)
+  claimedMinor    BigInt @default(0)
+
+  @@id([week, ticker])
+  @@map("market_reward_pool")
+}
+
+model MarketHuntSlot {
+  id                String  @id
+  playerId          String
+  issuedDay         String
+  week              String
+  templateId        String
+  difficulty        String
+  rewardRarity      String
+  stockTicker       String?
+  rewardValueMinor  BigInt  @default(0)
+  moduleRewardKind       String?
+  moduleRewardRarity     String?
+  moduleRewardQuantity   Int    @default(0)
+  moduleRewardParts      Int    @default(0)
+  moduleRewardModuleId   String?
+  points            Int
+  target            Float   @default(0)
+  issuedAt          BigInt
+  expiresAt         BigInt
+  status            String  @default("active")
+  claimedAt         BigInt?
+  reservedMinor     BigInt  @default(0)
+
+  @@index([playerId, issuedDay])
+  @@map("market_hunt_slots")
+}
+
+model MarketOraclePrice {
+  ticker      String @id
+  priceMinor  BigInt
+  refreshedAt BigInt
+
+  @@map("market_oracle_prices")
+}
+
+model WeeklyPerformance {
+  playerId              String
+  week                  String
+  stage                 String
+  activeDays            Int    @default(0)
+  activityMinor         BigInt @default(0)
+  revenueMinor          BigInt @default(0)
+  activeCustomersTotal  Float  @default(0)
+  customerSamples       Int    @default(0)
+  newRetainedCustomers  Float  @default(0)
+  utilizationBpsTotal   Float  @default(0)
+  reputationBpsTotal    Float  @default(0)
+  riskBpsTotal          Float  @default(0)
+  eventPoints           Float  @default(0)
+  sessions              Int    @default(0)
+  playerRevenueMinor    BigInt @default(0)
+  investYieldMinor      BigInt @default(0)
+  huntsCompleted        Int    @default(0)
+  finalized             Boolean @default(false)
+  score                 Float  @default(0)
+  eligible              Boolean @default(false)
+  payoutPlot            BigInt @default(0)
+  claimedAt             BigInt?
+  finalizedAt           BigInt?
+  snapshotId            String?
+
+  @@id([playerId, week])
+  @@map("weekly_performance")
+}
+
+// Frozen snapshot manifest for a finalized week (spec sheet 10/13).
+// Built from frozen source rows BEFORE per-row finalization; append-only by convention.
+model WeeklySnapshot {
+  id            String  @id
+  week          String  @unique
+  status        String  @default("finalized")
+  sourceCursors Json    @default("{}")
+  checksums     Json    @default("{}")
+  moduleLineage Json    @default("{}")
+  createdAt     BigInt
+
+  @@map("weekly_snapshots")
+}
+
+model PlotgoVisit {
+  id             String  @id
+  visitorId      String
+  hostId         String
+  day            String
+  action         String
+  buildingId     String
+  feeMinor       BigInt
+  notionalMinor  BigInt
+  idempotencyKey String  @unique
+  returnedAt     BigInt?
+  createdAt      BigInt
+
+  @@unique([visitorId, hostId, day])
+  @@index([hostId, day])
+  @@index([visitorId, day])
+  @@map("plotgo_visits")
+}
+
+model PlotgoInvestment {
+  id             String  @id
+  visitorId      String
+  hostId         String
+  buildingId     String
+  amountMinor    BigInt
+  shareBps       Int
+  startedDay     String
+  maturesDay     String
+  lastPaidDay    String  @default("")
+  yieldPaidMinor BigInt  @default(0)
+  owedMinor      BigInt  @default(0)
+  status         String  @default("active")
+  idempotencyKey String  @unique
+  createdAt      BigInt
+  maturedAt      BigInt?
+
+  @@index([hostId, status])
+  @@index([visitorId, status])
+  @@map("plotgo_investments")
+}
+
+model PlotgoLedger {
+  id            String  @id
+  playerId      String
+  day           String
+  reason        String
+  amountMinor   BigInt
+  balanceMinor  BigInt
+  metadataJson  Json
+  createdAt     BigInt
+
+  @@map("plotgo_ledger")
+}
+
+model PlotgoDistrictDay {
+  playerId  String
+  day       String
+  seed      Int
+  eventId   String
+  marksJson Json   @default("{}")
+
+  @@id([playerId, day])
+  @@map("plotgo_district_day")
+}
+
+model PlotgoSession {
+  playerId   String
+  day        String
+  verb       String
+  receiptJson Json
+  settledAt  BigInt
+
+  @@id([playerId, day])
+  @@map("plotgo_session")
+}
+
+model PlotgoPlacementAudit {
+  playerId          String  @id
+  layoutVersion     Int     @default(0)
+  geometryHash      String
+  synergyVersion    Int     @default(1)
+  supportVersion    Int     @default(1)
+  stackVersion      Int     @default(1)
+  congestionVersion Int     @default(1)
+  districtVersion   Int     @default(1)
+  tilemapVersion    Int     @default(1)
+  diagnosticVersion Int     @default(1)
+  moveTxId          String?
+  updatedAt         BigInt
+
+  @@map("plotgo_placement_audit")
+}
+
+model PlotgoMarketCycle {
+  id           Int    @id
+  state        String
+  startedAt    BigInt
+  endsAt       BigInt
+  seed         Int
+  cycleVersion Int    @default(1)
+  updatedAt    BigInt
+
+  @@map("plotgo_market_cycle")
+}
+
+model PlotgoPlayerEvent {
+  id            String  @id
+  playerId      String
+  catalogId     String
+  scope         String
+  status        String  @default("active")
+  issuedAt      BigInt
+  startsAt      BigInt
+  endsAt        BigInt
+  choiceId      String?
+  resolutionJson Json?
+  resolvedAt    BigInt?
+  rewardClaimed Boolean @default(false)
+
+  @@index([playerId])
+  @@map("plotgo_player_events")
+}
+
+model PlotgoEventMission {
+  id          String  @id
+  playerId    String
+  eventId     String
+  templateId  String
+  target      Float
+  issuedAt    BigInt
+  expiresAt   BigInt
+  status      String  @default("active")
+  claimedAt   BigInt?
+  rewardClaimed Boolean @default(false)
+
+  @@map("plotgo_event_missions")
+}
+
+model PlotgoEventAudit {
+  id             String  @id
+  playerId       String?
+  eventId        String?
+  auditType      String
+  resolutionHash String
+  payloadJson    Json
+  createdAt      BigInt
+
+  @@map("plotgo_event_audit")
+}
+
+model PlotgoModuleRewardEvent {
+  rewardId      String  @id
+  playerId      String
+  source        String
+  sourceEventId String
+  rewardKind    String
+  rarity        String
+  moduleId      String?
+  quantity      Int     @default(1)
+  partsAmount   Int     @default(0)
+  status        String  @default("pending")
+  metadataJson  Json    @default("{}")
+  configVersion String  @default("catalog-v1.0")
+  createdAt     BigInt
+  claimedAt     BigInt?
+
+  @@unique([playerId, source, sourceEventId], name: "idx_module_reward_source")
+  @@map("plotgo_module_reward_events")
+}
+
+model ModuleConfig {
+  moduleId        String
+  configVersion   String
+  rarity          String
+  category        String
+  compatibleFamilies String
+  configJson      Json
+  isActive        Boolean @default(true)
+  effectiveFrom   BigInt
+  effectiveUntil  BigInt?
+
+  @@id([moduleId, configVersion])
+  @@map("module_config")
+}
+
+model PlayerModuleInventory {
+  playerId        String
+  moduleId        String
+  quantityOwned   Int    @default(0)
+  quantityEquipped Int   @default(0)
+  firstAcquiredAt BigInt
+  lastAcquiredAt  BigInt
+  rowVersion      Int    @default(1)
+
+  @@id([playerId, moduleId])
+  @@map("player_module_inventory")
+}
+
+model BuildingModuleLoadout {
+  playerId       String
+  buildingId     String
+  slotIndex      Int
+  moduleId       String
+  effectiveAt    BigInt
+  loadoutVersion Int    @default(1)
+
+  @@id([playerId, buildingId, slotIndex])
+  @@map("building_module_loadout")
+}
+
+model ModuleLoadoutAudit {
+  eventId       String  @id
+  playerId      String
+  buildingId    String
+  slotIndex     Int
+  moduleId      String?
+  action        String
+  effectiveAt   BigInt
+  loadoutVersion Int
+  idempotencyKey String
+  createdAt     BigInt
+
+  @@unique([playerId, buildingId, idempotencyKey], name: "idx_module_loadout_idempotency")
+  @@map("module_loadout_audit")
+}
+
+model BuildingMasteryProgress {
+  playerId    String
+  buildingType String
+  tier        Int
+  progressJson Json   @default("{}")
+  status      String  @default("active")
+  completedAt BigInt?
+  claimedAt   BigInt?
+  rowVersion  Int    @default(1)
+
+  @@id([playerId, buildingType, tier])
+  @@map("building_mastery_progress")
+}
+
+model ModulePartsBalance {
+  playerId   String
+  rarity     String
+  balance    BigInt @default(0)
+  rowVersion Int    @default(1)
+
+  @@id([playerId, rarity])
+  @@map("module_parts_balance")
+}
+
+model ModulePartsLedger {
+  entryId       String  @id
+  playerId      String
+  rarity        String
+  delta         BigInt
+  source        String
+  sourceEventId String
+  createdAt     BigInt
+
+  @@unique([playerId, source, sourceEventId], name: "idx_module_parts_source")
+  @@map("module_parts_ledger")
+}
+
+model ModuleCraftJob {
+  craftId        String  @id
+  playerId       String
+  moduleId       String
+  rarity         String
+  partsCost      BigInt
+  startedAt      BigInt
+  completesAt    BigInt
+  status         String  @default("pending")
+  idempotencyKey String
+  createdAt      BigInt
+  completedAt    BigInt?
+
+  @@map("module_craft_jobs")
+}
+
+model PlotgoOfflineSession {
+  offlineSessionId String  @id
+  playerId         String
+  startedAt        BigInt
+  processedFrom    BigInt
+  processedUntil   BigInt
+  capUntil         BigInt
+  presenceState    String
+  status           String  @default("processed")
+  configVersion    String
+  summaryJson      Json    @default("{}")
+  createdAt        BigInt
+  completedAt      BigInt
+
+  @@map("plotgo_offline_sessions")
+}
+
+model PlotgoOfflineBucket {
+  bucketId         String  @id
+  offlineSessionId String
+  playerId         String
+  startAt          BigInt
+  endAt            BigInt
+  band             String
+  presenceState    String
+  cashEfficiency   Float
+  customerIntensity Float
+  cashDeltaMinor   BigInt @default(0)
+  customerDelta    Float  @default(0)
+  performanceRevenueCreditMinor BigInt @default(0)
+  performanceGrowthCredit       Float  @default(0)
+  riskBeforeBps    Int    @default(0)
+  riskAfterBps     Int    @default(0)
+  createdAt        BigInt
+
+  @@unique([playerId, startAt, endAt])
+  @@map("plotgo_offline_buckets")
+}
+
+model PlotgoOfflineSummary {
+  summaryId        String  @id
+  offlineSessionId String  @unique
+  playerId         String
+  awayStartedAt    BigInt
+  returnedAt       BigInt
+  processedUntil   BigInt
+  frozenMs         BigInt @default(0)
+  cashDeltaMinor   BigInt @default(0)
+  customerDelta    Float  @default(0)
+  revenueCreditMinor BigInt @default(0)
+  growthCredit     Float  @default(0)
+  bandsJson        Json   @default("[]")
+  timersJson       Json   @default("[]")
+  eventsJson       Json   @default("[]")
+  riskJson         Json   @default("{}")
+  viewedAt         BigInt?
+  createdAt        BigInt
+
+  @@map("plotgo_offline_summaries")
+}

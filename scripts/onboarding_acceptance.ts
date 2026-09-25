@@ -1,13 +1,24 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
-import Database from "better-sqlite3";
+import dotenv from "dotenv";
+import { PrismaClient } from "@prisma/client";
 
-const repoRoot = path.resolve(process.cwd(), "../..");
+// Load the repo-root .env so DATABASE_URL is available for the fixture client
+// and inherited by the spawned API server.
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(path.join(scriptDir, "package.json"));
+dotenv.config({ path: path.resolve(scriptDir, "../.env") });
+
+const repoRoot = path.resolve(scriptDir, "..");
 const apiCwd = path.join(repoRoot, "apps", "api");
+const tsxCli = path.join(path.dirname(require.resolve("tsx/package.json", { paths: [apiCwd] })), "dist", "cli.mjs");
 const apiPort = 8790;
 const baseUrl = `http://127.0.0.1:${apiPort}`;
 const playerIds = [`onboarding-acceptance-${randomUUID()}`, `onboarding-assist-${randomUUID()}`];
+const prisma = new PrismaClient();
 
 type JsonObject = Record<string, any>;
 
@@ -30,7 +41,7 @@ async function post(pathname: string, body: JsonObject, playerId?: string): Prom
 }
 
 async function waitForApi(): Promise<void> {
-  for (let attempt = 0; attempt < 40; attempt++) {
+  for (let attempt = 0; attempt < 60; attempt++) {
     try {
       const response = await fetch(`${baseUrl}/health`);
       if (response.ok) return;
@@ -42,37 +53,34 @@ async function waitForApi(): Promise<void> {
   throw new Error("Timed out waiting for the onboarding acceptance API");
 }
 
-function mutateAssistFixture(playerId: string): void {
-  const sqlite = new Database(path.join(apiCwd, "data", "plotgo.db"));
-  sqlite.prepare(`
-    UPDATE players
-    SET onboarding_started_at = ?, reputation_bps = -28200, last_meaningful_action_at = ?
-    WHERE id = ?
-  `).run(Date.now() - 3 * 60_000, Date.now(), playerId);
-  sqlite.close();
+async function mutateAssistFixture(playerId: string): Promise<void> {
+  await prisma.player.update({
+    where: { id: playerId },
+    data: {
+      onboardingStartedAt: Date.now() - 3 * 60_000,
+      reputationBps: -28200,
+      lastMeaningfulActionAt: Date.now(),
+    },
+  });
 }
 
-function cleanupFixtures(): void {
-  const sqlite = new Database(path.join(apiCwd, "data", "plotgo.db"));
-  const tables = [
-    "plotgo_onboarding_milestones", "plotgo_tutorial_recovery_ledger", "cards", "fragments",
-    "plotgo_position", "market_hunt_slots", "market_oracle_prices", "weekly_performance",
-    "plotgo_ledger", "plotgo_district_day", "plotgo_session", "plotgo_placement_audit",
-    "plotgo_player_events", "plotgo_event_missions", "plotgo_event_audit", "plotgo_module_reward_events",
-    "player_module_inventory", "building_module_loadout", "module_loadout_audit", "building_mastery_progress",
-    "module_parts_balance", "module_parts_ledger", "module_craft_jobs", "plotgo_offline_sessions",
-    "plotgo_offline_buckets", "plotgo_offline_summaries",
-  ];
-  sqlite.transaction(() => {
-    for (const table of tables) {
-      const columns = sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-      if (columns.some((column) => column.name === "player_id")) {
-        for (const playerId of playerIds) sqlite.prepare(`DELETE FROM ${table} WHERE player_id = ?`).run(playerId);
-      }
+async function cleanupFixtures(): Promise<void> {
+  const delegates = [
+    "plotgoOnboardingMilestone", "plotgoTutorialRecoveryLedger", "card", "fragment",
+    "plotgoPosition", "marketHuntSlot", "weeklyPerformance",
+    "plotgoLedger", "plotgoDistrictDay", "plotgoSession", "plotgoPlacementAudit",
+    "plotgoPlayerEvent", "plotgoEventMission", "plotgoEventAudit", "plotgoModuleRewardEvent",
+    "playerModuleInventory", "buildingModuleLoadout", "moduleLoadoutAudit", "buildingMasteryProgress",
+    "modulePartsBalance", "modulePartsLedger", "moduleCraftJob", "plotgoOfflineSession",
+    "plotgoOfflineBucket", "plotgoOfflineSummary",
+  ] as const;
+  await prisma.$transaction(async (tx) => {
+    for (const delegate of delegates) {
+      // @ts-expect-error dynamic delegate access for fixture cleanup
+      await tx[delegate].deleteMany({ where: { playerId: { in: playerIds } } });
     }
-    for (const playerId of playerIds) sqlite.prepare("DELETE FROM players WHERE id = ?").run(playerId);
-  })();
-  sqlite.close();
+    await tx.player.deleteMany({ where: { id: { in: playerIds } } });
+  });
 }
 
 async function runAcceptance(): Promise<void> {
@@ -103,18 +111,16 @@ async function runAcceptance(): Promise<void> {
   assert(corrected.onboarding.step === "onboarding_first_upgrade", "Cash Kiosk/Savings Stand adjacency must record the first synergy and advance onboarding");
   assert(corrected.onboarding.milestones.some((milestone: JsonObject) => milestone.id === "onboarding_first_synergy"), "first synergy milestone must be recorded");
 
-  const auditDb = new Database(path.join(apiCwd, "data", "plotgo.db"), { readonly: true });
-  const recoveryRow = auditDb
-    .prepare("SELECT kind, credited_minor AS creditedMinor FROM plotgo_tutorial_recovery_ledger WHERE player_id = ? AND kind = 'free_tutorial_relocation'")
-    .get(playerId) as { kind: string; creditedMinor: number } | undefined;
-  auditDb.close();
-  assert(recoveryRow?.kind === "free_tutorial_relocation" && recoveryRow.creditedMinor >= 0, "relocation correction must be auditable");
+  const recoveryRow = await prisma.plotgoTutorialRecoveryLedger.findFirst({
+    where: { playerId, kind: "free_tutorial_relocation" },
+  });
+  assert(recoveryRow?.kind === "free_tutorial_relocation" && Number(recoveryRow.creditedMinor) >= 0, "relocation correction must be auditable");
 
   const assistPlayer = playerIds[1]!;
   await post("/api/session", { playerId: assistPlayer });
   const assistBuild = await post("/api/plot/place", { type: "cash_kiosk", x: 0, y: 0 }, assistPlayer);
   assert(assistBuild.cards.length === 1, "assist fixture must have one active building");
-  mutateAssistFixture(assistPlayer);
+  await mutateAssistFixture(assistPlayer);
   const assisted = await post("/api/session/settle", { verb: "walk" }, assistPlayer);
   assert(assisted.receipt.onboardingRecovery.includes("first_customer_assist"), "first-customer demand assist must be reported in the receipt");
   assert(assisted.attributes.population > 0, "demand assist must create real customer state");
@@ -126,11 +132,10 @@ async function runAcceptance(): Promise<void> {
 async function main(): Promise<void> {
   let server: ChildProcess | undefined;
   try {
-    server = spawn("pnpm.cmd", ["--filter", "@plotgo/api", "start"], {
-      cwd: repoRoot,
+    server = spawn(process.execPath, [tsxCli, "src/index.ts"], {
+      cwd: apiCwd,
       env: { ...process.env, PORT: String(apiPort) },
       stdio: "ignore",
-      shell: true,
     });
     await waitForApi();
     await runAcceptance();
@@ -139,7 +144,8 @@ async function main(): Promise<void> {
       if (process.platform === "win32" && server.pid) execFileSync("taskkill", ["/PID", String(server.pid), "/T", "/F"], { stdio: "ignore" });
       else server.kill();
     }
-    cleanupFixtures();
+    await cleanupFixtures();
+    await prisma.$disconnect();
   }
 }
 

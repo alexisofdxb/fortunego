@@ -1,14 +1,27 @@
 import {
   BUILDING_LIST,
   CANONICAL_MODULE_CATALOG,
+  CARDS,
+  INVEST_MAX_MINOR,
+  INVEST_MIN_MINOR,
+  INVEST_SHARE_BPS,
+  INVEST_TERM_DAYS,
+  VISIT_ACTIONS,
+  VISIT_NOTIONAL_MINOR,
   buildingModuleProfile,
   eventForDay,
+  investAmountOk,
+  investMaturesDay,
+  investYieldMinor,
   moduleRarityAllowed,
   moduleEquippable,
   moduleStageAllowed,
   resolveArchetype,
   resolveModuleEffects,
   settleDistrict,
+  utcDaysBetween,
+  visitEligible,
+  visitFeeMinor,
   PHASE4_INSTRUMENTS,
   applyPortfolioMarks,
   phase4Marks,
@@ -92,4 +105,28 @@ assert(capped.operatingCostReductionBps <= 12_000, "operating cost cap exceeded"
 assert(capped.serviceQualityPoints <= 10, "service quality cap exceeded");
 for (const value of Object.values(capped.riskDeltas)) assert(value >= -15 && value <= 15, "risk cap exceeded");
 
-console.log(`balance regression passed: ${eras.length} eras × 3 stages, archetype thresholds, rarity/stage matrix, and module caps`);
+// Phase 5 — visit/invest pure helpers.
+assert(VISIT_NOTIONAL_MINOR.trade === 20_000 && VISIT_NOTIONAL_MINOR.deposit === 50_000 && VISIT_NOTIONAL_MINOR.borrow === 30_000, "visit notionals diverged from the spec");
+assert(INVEST_TERM_DAYS === 3 && INVEST_SHARE_BPS === 2_500 && INVEST_MIN_MINOR === 10_000 && INVEST_MAX_MINOR === 500_000, "invest constants diverged from the spec");
+for (const lineage of ["exchange", "trade", "broker"] as const) assert(visitEligible(lineage, "trade"), `${lineage} must accept the trade action`);
+for (const lineage of ["fund"] as const) assert(visitEligible(lineage, "deposit"), `${lineage} must accept the deposit action`);
+for (const lineage of ["bank", "lend"] as const) assert(visitEligible(lineage, "borrow"), `${lineage} must accept the borrow action`);
+assert(!visitEligible("fund", "trade") && !visitEligible("vault", "deposit") && !visitEligible("broker", "borrow") && !visitEligible("research", "trade"), "ineligible lineages accepted a visit action");
+for (const spec of BUILDING_LIST) {
+  const eligible = VISIT_ACTIONS.some((action) => visitEligible(spec.lineage, action));
+  assert(!eligible || spec.rateBps > 0, `${spec.id} is visit-eligible but has no catalog rate`);
+  assert(spec.rateBps >= 0 && spec.rateBps <= 500, `${spec.id} visit rate left the 0–500 bps band`);
+}
+assert(visitFeeMinor("trade", CARDS.trading_booth.rateBps, 1_000_000) === Math.round(20_000 * CARDS.trading_booth.rateBps / 10_000), "trade fee did not equal notional × rate");
+assert(visitFeeMinor("deposit", CARDS.small_fund.rateBps, 1_000_000) === Math.round(50_000 * CARDS.small_fund.rateBps / 10_000), "deposit fee did not equal notional × rate");
+assert(visitFeeMinor("borrow", 40, 50) === 50, "visit fee was not capped at the visitor balance");
+assert(visitFeeMinor("trade", 25, 0) === 0, "visit fee for a 0-balance visitor was not zero");
+assert(investYieldMinor(10_000, INVEST_SHARE_BPS) === 2_500, "yield was not 25% of gross building revenue");
+assert(investYieldMinor(0, INVEST_SHARE_BPS) === 0, "yield was not zero for a zero-gross building");
+assert(investYieldMinor(1_000, 20_000) === 1_000, "yield share was not clamped to 100%");
+assert(investMaturesDay("2026-01-30") === "2026-02-02", "maturity day was not startedDay + 3 UTC days");
+assert(utcDaysBetween("2026-01-30", "2026-02-02") === INVEST_TERM_DAYS, "UTC day diff diverged from the term");
+assert(investAmountOk(INVEST_MIN_MINOR) && investAmountOk(INVEST_MAX_MINOR), "invest bounds rejected the boundary amounts");
+assert(!investAmountOk(INVEST_MIN_MINOR - 1) && !investAmountOk(INVEST_MAX_MINOR + 1) && !investAmountOk(10_000.5), "invest bounds accepted an out-of-range amount");
+
+console.log(`balance regression passed: ${eras.length} eras × 3 stages, archetype thresholds, rarity/stage matrix, module caps, and Phase 5 visit/invest helpers`);

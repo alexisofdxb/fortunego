@@ -4,5 +4,10 @@ dist
 *.db
 *.db-journal
 .env
-.env.local
+.env.*
+!.env.example
+*.log
+.vite/
+coverage/
+*.tsbuildinfo
 apps/api/data
