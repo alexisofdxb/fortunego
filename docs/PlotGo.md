@@ -1,5 +1,14 @@
 # PlotGo
 
+> **Status: design history.** This document describes the original Family-app
+> mini-app lineage (Next.js host app, `FamilyAppBridge`, Family SDK launch
+> JWTs, `payments.charge`). The shipped product is a **standalone web game**
+> with **Privy** authentication (see the README): the Family SDK, iframe
+> bridge, and manifest permissions described below were never built and are
+> superseded. The economy, phases, catalog, and security invariants remain
+> the design reference; wherever this doc says "Family", read "standalone
+> session (Privy DID)".
+
 | | |
 |---|---|
 | **Author** | _placeholder_ |

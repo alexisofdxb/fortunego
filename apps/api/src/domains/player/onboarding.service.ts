@@ -6,10 +6,57 @@ import {
   onboardingStep as onboardingStepForMilestones,
   resolvePlacement,
   ONBOARDING_MILESTONES,
+  NEW_PLAYER_BOOST_HOURS,
+  STARTER_CASH_MINOR,
+  utcDay,
   type PlacedCard,
 } from "@plotgo/game";
 import { prisma } from "../../infrastructure/postgres/client";
 import { newId, num } from "../../shared/types";
+import { ensureOpeningLedger } from "../economy/ledger.service";
+
+/**
+ * Create a fresh player account (starter Cash, new-player acquisition boost
+ * window, opening ledger, onboarding kickoff). Used by the dev-mode session
+ * route and by privy-mode first login. Races are safe: callers either hold a
+ * unique key (privyUserId) or pre-check existence (dev mode).
+ */
+export async function createPlayer(account: { id?: string; privyUserId?: string }) {
+  const id = account.id ?? newId();
+  const now = Date.now();
+  await prisma.player.create({
+    data: {
+      id,
+      privyUserId: account.privyUserId ?? null,
+      createdAt: now,
+      founder: true,
+      cashMinor: STARTER_CASH_MINOR,
+      earnedMinor: 0,
+      lastSettleAt: now,
+      exchangeActionsToday: 0,
+      huntDay: utcDay(),
+      huntId: "upgrade_any",
+      huntClaimed: false,
+      weeklyScore: 0,
+      riskBps: 700,
+      reputationBps: 5000,
+      conditionBps: 10000,
+      population: 0,
+      capacity: 0,
+      satisfactionBps: 5000,
+      transactions: 0,
+      volumeMinor: 0,
+      // New-player acquisition boost (doc Model Assumptions): 3x for 24h.
+      acquisitionBoostUntil: now + NEW_PLAYER_BOOST_HOURS * 3_600_000,
+      lastMeaningfulActionAt: now,
+      offlineStartedAt: now,
+      offlineProcessedUntil: now,
+      presenceState: "engaged",
+    },
+  });
+  await ensureOpeningLedger(prisma, id, STARTER_CASH_MINOR);
+  return prisma.player.findUniqueOrThrow({ where: { id } });
+}
 
 export type OnboardingRow = {
   onboardingSessionId: string | null;

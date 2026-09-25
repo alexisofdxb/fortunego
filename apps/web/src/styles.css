@@ -1,3 +1,14 @@
+// --- Landing (standalone auth) ---
+.landing { text-align: center; padding: 48px 24px; }
+.landing-title { font-family: var(--font-brand, "Fraunces", serif); font-size: 42px; margin: 0 0 8px; color: var(--gold, #d4a437); }
+.landing-sub { margin: 0 0 24px; color: var(--ink-soft, #b9c0d4); }
+.landing-cta {
+  font: inherit; font-weight: 600; cursor: pointer;
+  padding: 12px 28px; border-radius: 999px; border: none;
+  background: var(--gold, #d4a437); color: #14202b;
+}
+.landing-cta:hover { filter: brightness(1.08); }
+
 :root {
   --navy: #141824;
   --ink: #0c0f16;
@@ -478,3 +489,10 @@ button.claim:disabled { opacity: 0.4; cursor: default; }
 .bell-item b { display: block; font-size: 11px; }
 .bell-item span { display: block; color: #9bafbd; font-size: 10px; margin-top: 2px; line-height: 1.35; }
 .bell-item small { display: block; color: #8a8678; font-size: 8px; margin-top: 3px; }
+
+.logout-btn {
+  align-self: center; font: inherit; cursor: pointer;
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 1px solid var(--line, #2a3348); background: transparent; color: var(--ink-soft, #b9c0d4);
+}
+.logout-btn:hover { color: var(--gold, #d4a017); border-color: var(--gold, #d4a017); }

@@ -25,7 +25,13 @@ function bucketSpec(method: string, path: string): { name: string; limit: number
 }
 
 function identityKey(c: { req: { header: (name: string) => string | undefined } }): string {
-  // Prototype auth self-declares via x-player-id; fall back to the client IP.
+  // Privy mode keys by a stable slice of the bearer token; dev mode by the
+  // self-declared x-player-id. Fall back to the client IP.
+  const authorization = c.req.header("Authorization");
+  if (authorization?.startsWith("Bearer ")) {
+    const token = authorization.slice("Bearer ".length);
+    return `did:${token.length}:${token.slice(-24)}`;
+  }
   return c.req.header("x-player-id")?.trim() || c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous";
 }
 

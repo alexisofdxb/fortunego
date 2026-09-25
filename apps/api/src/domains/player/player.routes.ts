@@ -21,7 +21,7 @@ import { prisma } from "../../infrastructure/postgres/client";
 import { archetypeResolutionForPlayer, districtDay, effectiveDistrictEvent, loadFrags, operatingBoard, sessionFor, settlePortfolio } from "../plot/board.service";
 import { claimTutorialRecovery, ensureOpeningLedger, recordLedger } from "../economy/ledger.service";
 import { moduleEffectsForBoard, moduleLineageRefs } from "../modules/modules.service";
-import { currentEmpireLevel, onboardingMilestoneRows, onboardingRow, recordOnboardingMilestone, ensureOnboardingStarted } from "../player/onboarding.service";
+import { currentEmpireLevel, onboardingMilestoneRows, onboardingRow, recordOnboardingMilestone, ensureOnboardingStarted, createPlayer } from "../player/onboarding.service";
 import { recordMeaningfulAction } from "../../shared/offline";
 import { upsertWeeklySessionPerformance } from "../performance/performance.service";
 import { snapshot, settlePlayer } from "../../shared/snapshot";
@@ -35,45 +35,22 @@ export const identityRoutes = new Hono<AppEnv>();
 identityRoutes.get("/health", (c) => c.json({ ok: true }));
 
 identityRoutes.post("/api/session", async (c) => {
+  // privy mode: identity comes from the verified bearer token (requirePlayer is
+  // applied in app.ts to /api/session as well), so the account already exists.
+  const authed = c.get("player");
+  if (authed) {
+    await ensureOnboardingStarted(authed.id);
+    const snap = await snapshot(authed.id);
+    return c.json({ playerId: authed.id, plot: snap });
+  }
+  // dev mode: create-or-load by the self-declared id (prototype identity).
   const body = await c.req.json().catch(() => ({}));
   const id =
     (typeof body.playerId === "string" && body.playerId) ||
     c.req.header("x-player-id") ||
     newId();
   const existing = await prisma.player.findUnique({ where: { id } });
-  if (!existing) {
-    const day = utcDay();
-    await prisma.player.create({
-      data: {
-        id,
-        createdAt: Date.now(),
-        founder: true,
-        cashMinor: STARTER_CASH_MINOR,
-        earnedMinor: 0,
-        lastSettleAt: Date.now(),
-        exchangeActionsToday: 0,
-        huntDay: day,
-        huntId: "upgrade_any",
-        huntClaimed: false,
-        weeklyScore: 0,
-        riskBps: 700,
-        reputationBps: 5000,
-        conditionBps: 10000,
-        population: 0,
-        capacity: 0,
-        satisfactionBps: 5000,
-        transactions: 0,
-        volumeMinor: 0,
-        // New-player acquisition boost (doc Model Assumptions): 3× for 24h.
-        acquisitionBoostUntil: Date.now() + NEW_PLAYER_BOOST_HOURS * 3_600_000,
-      },
-    });
-    await ensureOpeningLedger(prisma, id, STARTER_CASH_MINOR);
-    await prisma.player.update({
-      where: { id },
-      data: { lastMeaningfulActionAt: Date.now(), offlineStartedAt: Date.now(), offlineProcessedUntil: Date.now(), presenceState: "engaged" },
-    });
-  }
+  if (!existing) await createPlayer({ id });
   await ensureOnboardingStarted(id);
   const snap = await snapshot(id);
   return c.json({ playerId: id, plot: snap });

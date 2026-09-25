@@ -53,6 +53,8 @@ model Player {
   personalEventProtectionUntil BigInt @default(0)
   archetype              String?
   archetypeChangedAt     BigInt?
+  /** Privy DID for standalone auth mode (null in dev mode). */
+  privyUserId            String?  @unique
   operatingStreak        Int     @default(0)
   longestStreak          Int     @default(0)
   // Phase 2 customer economic model: persisted per-segment customer counts

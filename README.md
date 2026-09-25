@@ -29,6 +29,18 @@ Monorepo (pnpm workspaces), aligned with `docs/PLOT_Technology_Stack_Architectur
 - `packages/shared` — Zod DTO contracts shared between api and web
 - PostgreSQL 16 via Docker Compose; migrations via Prisma
 
+## Auth (standalone)
+
+PlotGo is a standalone web game — no host app. Accounts use [Privy](https://privy.io) (`@privy-io/react-auth` on the web, `@privy-io/node` token verification in the API). The player row is auto-created on first login (unique `privyUserId`); every request carries `Authorization: Bearer <privy access token>`, verified server-side (signature + iss/aud/exp), with the player resolved by DID. Login methods: email, Google, Discord; an embedded wallet is created for users without one (keeps the on-chain roadmap open).
+
+Local/CI runs default to `PLOTGO_AUTH_MODE=dev`, which keeps the prototype `x-player-id` identity so no Privy dashboard app is needed. To go live with real accounts:
+
+1. Create an app in the [Privy dashboard](https://dashboard.privy.io); copy the App ID and App Secret.
+2. Set `PLOTGO_AUTH_MODE=privy`, `PRIVY_APP_ID`, `PRIVY_APP_SECRET` in `.env`, and `VITE_PRIVY_APP_ID=<app id>` for the web build (e.g. in `apps/web/.env`).
+3. Set `WEB_ORIGIN` to your deployed frontend origin.
+
+Manual smoke with real credentials: sign in on the landing screen → the game loads → sign out via the header button → landing returns. `pnpm test:auth` covers fail-fast config, 401s, and the account mapping without needing a Privy app.
+
 ## Run
 
 Prereqs: Node ≥ 20.19, pnpm 10, Docker.
@@ -45,7 +57,7 @@ Web: http://localhost:5173
 API: http://localhost:8787
 Adminer: http://localhost:8080 (server `db`, user `plotgo`, password `plotgo`)
 
-Other scripts: `pnpm typecheck` · `pnpm test:balance` · `pnpm test:onboarding` · `pnpm test:visits` · `pnpm test:retention` · `pnpm test:customers` · `pnpm simulate:performance` · `pnpm build`
+Other scripts: `pnpm typecheck` · `pnpm test:balance` · `pnpm test:onboarding` · `pnpm test:visits` · `pnpm test:retention` · `pnpm test:customers` · `pnpm test:auth` · `pnpm simulate:performance` · `pnpm build`
 
 ## Architecture notes
 
@@ -62,7 +74,7 @@ Other scripts: `pnpm typecheck` · `pnpm test:balance` · `pnpm test:onboarding`
 
 ## Roadmap (deferred from the target architecture doc)
 
-- FamilySDK auth bridge (signed sessions + wallet linking) — the one deliberately un-closed spec gap
+- Responsive PC/desktop layout mode (the shell is mobile-first 430px today; the game runs on PC browsers in the phone frame)
 - Redis + BullMQ durable queue (the in-process scheduler is the local stand-in)
 - Socket.IO realtime pushes (currently 10s polling)
 - Blockchain settlement (`$PLOT` ERC-20, stock-fragment ERC-1155)

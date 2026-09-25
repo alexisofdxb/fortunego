@@ -18,20 +18,27 @@ import { objectiveRoutes } from "./domains/objectives/objectives.routes";
 import { notificationRoutes } from "./domains/notifications/notifications.routes";
 import { jobRoutes } from "./infrastructure/tasks/job.routes";
 import { ensureModuleConfig } from "./domains/modules/modules.service";
+import { requirePlayer } from "./middleware/auth";
+import { env } from "./shared/config";
 
 export const app: Hono = new Hono();
+const allowedOrigins = ["http://localhost:5173", "http://127.0.0.1:5173"];
+if (env.webOrigin) allowedOrigins.push(env.webOrigin);
 app.use(
   "*",
   cors({
-    origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
-    allowHeaders: ["Content-Type", "x-player-id"],
+    origin: allowedOrigins,
+    allowHeaders: ["Content-Type", "x-player-id", "Authorization"],
   }),
 );
 app.use("*", securityHeaders);
-// Rate limit after the security headers, before routes (spec sheet 24). Keyed by
-// x-player-id (the prototype identity header) or client IP.
+// Rate limit after the security headers, before routes (spec sheet 24).
 app.use("*", rateLimit);
 
+// /api/session: open in dev mode (self-declared id creates the account); in
+// privy mode it sits behind the verified-token middleware and returns the
+// authenticated player's snapshot.
+if (env.authMode === "privy") app.use("/api/session", requirePlayer);
 app.route("/", identityRoutes);
 app.route("/", plotRoutes);
 app.route("/", economyRoutes);
