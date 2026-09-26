@@ -671,3 +671,21 @@ button.claim:disabled { opacity: 0.4; cursor: default; }
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Desktop (PC view): >=1024px drops the 430px phone column — full-width board
+// stage, centered dock and hand tray for readable widths.
+// ---------------------------------------------------------------------------
+@media (min-width: 1024px) {
+  #app { max-width: none; }
+  .hand {
+    max-width: 900px;
+    width: calc(100% - 32px);
+    margin-left: auto;
+    margin-right: auto;
+    border-radius: 16px;
+    border-bottom: 1px solid #2c3d5c;
+  }
+  .dock { bottom: 20px; }
+  .place-hint { padding: 6px 0 2px; }
+}

@@ -41,6 +41,19 @@ Local/CI runs default to `PLOTGO_AUTH_MODE=dev`, which keeps the prototype `x-pl
 
 Manual smoke with real credentials: sign in on the landing screen → the game loads → sign out via the header button → landing returns. `pnpm test:auth` covers fail-fast config, 401s, and the account mapping without needing a Privy app.
 
+## Deploy (local / VPS)
+
+The API serves the built web build (`apps/web/dist`) on the same origin — one process, one port, no CORS. This is also the VPS deploy shape.
+
+```bash
+pnpm build                                  # build the web into apps/web/dist
+docker compose up -d db                     # database
+pm2 start ecosystem.config.cjs              # persistent process (pm2 save / pm2 resurrect)
+# -> http://localhost:8787
+```
+
+Without pm2, a plain foreground deploy is `cd apps/api && pnpm start` after `pnpm build`. Dev mode (`pnpm dev`) keeps Vite on :5173 with the API on :8787.
+
 ## Run
 
 Prereqs: Node ≥ 20.19, pnpm 10, Docker.
