@@ -11,12 +11,14 @@ interface UiState {
   drag: DragState | null;
   ghost: Ghost;
   toast: string;
+  openSections: Record<string, boolean>;
   setInspectId: (id: string | null) => void;
   beginDrag: (drag: DragState) => void;
   rotateDrag: () => void;
   setGhost: (ghost: Ghost) => void;
   endDrag: () => void;
   setToast: (toast: string) => void;
+  toggleSection: (id: string) => void;
 }
 
 export const useUiStore = create<UiState>((set, get) => ({
@@ -24,6 +26,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   drag: null,
   ghost: null,
   toast: "",
+  openSections: {},
   setInspectId: (inspectId) => set({ inspectId }),
   beginDrag: (drag) => set({ drag, ghost: null, inspectId: null }),
   rotateDrag: () => {
@@ -34,4 +37,5 @@ export const useUiStore = create<UiState>((set, get) => ({
   setGhost: (ghost) => set({ ghost }),
   endDrag: () => set({ drag: null, ghost: null }),
   setToast: (toast) => set({ toast }),
+  toggleSection: (id) => set({ openSections: { ...get().openSections, [id]: !get().openSections[id] } }),
 }));

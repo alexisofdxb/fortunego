@@ -74,7 +74,6 @@ Other scripts: `pnpm typecheck` · `pnpm test:balance` · `pnpm test:onboarding`
 
 ## Roadmap (deferred from the target architecture doc)
 
-- Responsive PC/desktop layout mode (the shell is mobile-first 430px today; the game runs on PC browsers in the phone frame)
 - Redis + BullMQ durable queue (the in-process scheduler is the local stand-in)
 - Socket.IO realtime pushes (currently 10s polling)
 - Blockchain settlement (`$PLOT` ERC-20, stock-fragment ERC-1155)

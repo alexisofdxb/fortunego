@@ -2,27 +2,44 @@ import { useState, type ReactNode } from "react";
 import type { PlotSnapshot } from "@plotgo/shared";
 import { ObjectivesPanel } from "./ObjectivesPanel";
 import { closingBellCopy, formatCountdown, scrollToSelector } from "../utils";
+import { useUiStore } from "../state/ui";
 
 function BriefingCard({
   id,
   title,
+  summary,
   onDismiss,
   children,
 }: {
   id: string;
   title: string;
+  summary: string;
   onDismiss: (id: string) => void;
   children: ReactNode;
 }) {
+  const sectionId = `briefing-${id}`;
+  const open = useUiStore((s) => !!s.openSections[sectionId]);
+  const toggle = useUiStore((s) => s.toggleSection);
   return (
     <section className={`briefing-card briefing-${id}`}>
       <div className="briefing-card-head">
         <b>{title}</b>
-        <button className="briefing-dismiss" type="button" aria-label={`Dismiss ${title}`} onClick={() => onDismiss(id)}>
-          ×
-        </button>
+        <span className="briefing-card-tools">
+          <button
+            className="briefing-dismiss"
+            type="button"
+            aria-label={open ? `Collapse ${title}` : `Expand ${title}`}
+            aria-expanded={open}
+            onClick={() => toggle(sectionId)}
+          >
+            {open ? "▾" : "▸"}
+          </button>
+          <button className="briefing-dismiss" type="button" aria-label={`Dismiss ${title}`} onClick={() => onDismiss(id)}>
+            ×
+          </button>
+        </span>
       </div>
-      {children}
+      {open ? children : <p className="briefing-line subdued">{summary}</p>}
     </section>
   );
 }
@@ -79,7 +96,7 @@ export function DailyBriefing({ plot }: { plot: PlotSnapshot }) {
           ⚠ {alert.split(".")[0]}.
         </button>
       ) : (
-        <BriefingCard id="alert" title="Critical Business Alert" onDismiss={() => dismiss(alertKey)} key={alertKey}>
+        <BriefingCard id="alert" title="Critical Business Alert" summary={alert.split(".")[0]} onDismiss={() => dismiss(alertKey)} key={alertKey}>
           <p className="briefing-alert-copy">{alert}</p>
           <button className="performance-claim" type="button" onClick={() => scrollToSelector('[data-onboarding-target="settle"]')}>
             Review district
@@ -92,7 +109,13 @@ export function DailyBriefing({ plot }: { plot: PlotSnapshot }) {
   // (b) Hunts Today.
   if (!isDismissed("hunts")) {
     cards.push(
-      <BriefingCard id="hunts" title="Hunts Today" onDismiss={dismiss} key="hunts">
+      <BriefingCard
+        id="hunts"
+        title="Hunts Today"
+        summary={`${offers.length} offer${offers.length === 1 ? "" : "s"} · ${activeCount}/5 active${plot.rerollAvailable ? " · free reroll ready" : ""}`}
+        onDismiss={dismiss}
+        key="hunts"
+      >
         <p className="briefing-line">
           {offers.length} offer{offers.length === 1 ? "" : "s"} · {activeCount}/5 active
           {plot.rerollAvailable ? " · free reroll ready" : " · reroll used"}
@@ -107,7 +130,13 @@ export function DailyBriefing({ plot }: { plot: PlotSnapshot }) {
   // (c) Business Objectives — compact card with the canonical panel collapsible.
   if (!isDismissed("objectives") && objectives) {
     cards.push(
-      <BriefingCard id="objectives" title="Business Objectives" onDismiss={dismiss} key="objectives">
+      <BriefingCard
+        id="objectives"
+        title="Business Objectives"
+        summary={`${objectiveComplete}/3 complete today · Cash-only rewards`}
+        onDismiss={dismiss}
+        key="objectives"
+      >
         <p className="briefing-line">
           {objectiveComplete}/3 complete today · Cash-only rewards · reset at 00:00 UTC
         </p>
@@ -124,7 +153,13 @@ export function DailyBriefing({ plot }: { plot: PlotSnapshot }) {
   // (d) Weekly Performance.
   if (!isDismissed("performance") && bell && !plot.performance.finalized) {
     cards.push(
-      <BriefingCard id="performance" title="Weekly Performance" onDismiss={dismiss} key="performance">
+      <BriefingCard
+        id="performance"
+        title="Weekly Performance"
+        summary={`${plot.performance.score}/120 provisional · ${plot.performance.activeDays}/3 active days${plot.weekStatus?.status === "open" ? ` · closes in ${formatCountdown(plot.weekStatus.msUntilClose)}` : ""}`}
+        onDismiss={dismiss}
+        key="performance"
+      >
         <p className="briefing-line">
           {plot.performance.score}/120 provisional · {plot.performance.activeDays}/3 active days
           {plot.weekStatus?.status === "open" ? ` · closes in ${formatCountdown(plot.weekStatus.msUntilClose)}` : ""}
@@ -146,8 +181,15 @@ export function DailyBriefing({ plot }: { plot: PlotSnapshot }) {
   // (e) Event Calendar — current + next announced window.
   if (!isDismissed("events") && calendar && (calendar.current || nextWindow)) {
     const fmt = (ts: number) => new Date(ts).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    const fmtShort = (ts: number) => new Date(ts).toLocaleString([], { weekday: "short", hour: "2-digit" });
     cards.push(
-      <BriefingCard id="events" title="Event Calendar" onDismiss={dismiss} key="events">
+      <BriefingCard
+        id="events"
+        title="Event Calendar"
+        summary={calendar.current ? `Live: ${calendar.current.title}` : nextWindow ? `Next: ${nextWindow.title} · ${fmtShort(nextWindow.startsAt)}` : "No announced windows"}
+        onDismiss={dismiss}
+        key="events"
+      >
         {calendar.current ? (
           <p className="briefing-line">
             Now: {calendar.current.title} — until {fmt(calendar.current.endsAt)}
@@ -167,7 +209,7 @@ export function DailyBriefing({ plot }: { plot: PlotSnapshot }) {
   // (f) Operating Streak — small footer only, status/cosmetic (spec sheet 10).
   if (!isDismissed("streak") && streak >= 2) {
     cards.push(
-      <BriefingCard id="streak" title="Operating Streak" onDismiss={dismiss} key="streak">
+      <BriefingCard id="streak" title="Operating Streak" summary={`${streak} day${streak === 1 ? "" : "s"} · status only`} onDismiss={dismiss} key="streak">
         <p className="briefing-line streak-line" title={`Longest streak: ${plot.longestStreak ?? streak} consecutive eligible days`}>
           Operating streak: {streak} day{streak === 1 ? "" : "s"} — status only, no rewards attached.
         </p>

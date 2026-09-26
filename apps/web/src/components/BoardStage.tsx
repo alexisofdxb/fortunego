@@ -125,7 +125,8 @@ export function BoardStage({ plot }: { plot: PlotSnapshot }) {
         if (dist > DRAG_THRESHOLD) {
           pan.moved = true;
           clearLongPress();
-          // Direct drag on a piece starts a move; on empty space it pans.
+          // Direct drag on a piece starts a move; empty ground does not pan
+          // (RTS-style camera: zoom only, board stays framed).
           if (pan.pieceId) {
             const pieceId = pan.pieceId;
             pan = null;
@@ -134,9 +135,6 @@ export function BoardStage({ plot }: { plot: PlotSnapshot }) {
             return;
           }
         }
-        board.panBy(e.clientX - pan.lastX, e.clientY - pan.lastY);
-        pan.lastX = e.clientX;
-        pan.lastY = e.clientY;
       }
     };
 
@@ -198,6 +196,11 @@ export function BoardStage({ plot }: { plot: PlotSnapshot }) {
       }
       board = b;
       boardHandle.current = b;
+      // Sync pieces immediately: plot data may have arrived while the board
+      // was still initializing (React Query structural sharing can keep
+      // plot.cards referentially stable across polls, so the effect below
+      // might never re-fire for the initial data).
+      b.setCards(live.current.plot.cards);
       b.canvas.addEventListener("pointerdown", onPointerDown);
       window.addEventListener("pointermove", onPointerMove);
       window.addEventListener("pointerup", onPointerUp);

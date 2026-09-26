@@ -381,8 +381,8 @@ export async function processOfflineCatchup(playerId: string, now = Date.now()):
     const summaryId = (await tx.plotgoOfflineSummary.findUnique({ where: { offlineSessionId: sessionId }, select: { summaryId: true } }))?.summaryId ?? newId();
     await tx.$executeRaw`
       INSERT INTO plotgo_offline_summaries
-        ("summaryId", "offlineSessionId", "playerId", "awayStartedAt", "returnedAt", "processedUntil", "frozenMs", "cashDeltaMinor", "customerDelta", "revenueCreditMinor", "growthCredit", "bandsJson", "eventsJson", "riskJson", createdAt)
-      VALUES (${summaryId}, ${sessionId}, ${playerId}, ${Number(aggregate._min.startAt ?? lastAction)}, ${now}, ${Number(aggregate._max.endAt ?? processedUntil)}, ${frozenMs}, ${summaryCashDelta}, ${summaryCustomerDelta}, ${summaryRevenueCredit}, ${summaryGrowthCredit}, ${JSON.stringify(summaryBands)}, ${JSON.stringify(events)}, ${JSON.stringify({ beforeBps: riskBefore, afterBps: state.riskBps })}, ${now})
+        ("summaryId", "offlineSessionId", "playerId", "awayStartedAt", "returnedAt", "processedUntil", "frozenMs", "cashDeltaMinor", "customerDelta", "revenueCreditMinor", "growthCredit", "bandsJson", "eventsJson", "riskJson", "createdAt")
+      VALUES (${summaryId}, ${sessionId}, ${playerId}, ${Number(aggregate._min.startAt ?? lastAction)}, ${now}, ${Number(aggregate._max.endAt ?? processedUntil)}, ${frozenMs}, ${summaryCashDelta}, ${summaryCustomerDelta}, ${summaryRevenueCredit}, ${summaryGrowthCredit}, ${JSON.stringify(summaryBands)}::jsonb, ${JSON.stringify(events)}::jsonb, ${JSON.stringify({ beforeBps: riskBefore, afterBps: state.riskBps })}::jsonb, ${now})
       ON CONFLICT ("offlineSessionId") DO UPDATE SET
         "returnedAt" = EXCLUDED."returnedAt",
         "processedUntil" = EXCLUDED."processedUntil",
