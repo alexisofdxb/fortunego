@@ -1,4 +1,7 @@
-export type MarketStage = "humble" | "starter" | "growing" | "established" | "elite" | "tycoon";
+import type { EmpireRank } from "./progression.ts";
+
+/** v0.2 empire rank; kept as the market-stage alias for compatibility. */
+export type MarketStage = EmpireRank;
 export type HuntDifficulty = "easy" | "standard" | "hard" | "elite" | "jackpot";
 export type RewardRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
@@ -66,12 +69,13 @@ export const STAGE_RULES: Record<MarketStage, {
   difficultyMix: Record<HuntDifficulty, number>;
   weeklyPointTarget: number;
 }> = {
-  humble: { empireLevels: [1, 10], baseHunts: 3, bonusHunts: 0, targetCompletion: 0.45, difficultyMix: { easy: 0.7, standard: 0.25, hard: 0.05, elite: 0, jackpot: 0 }, weeklyPointTarget: 22 },
-  starter: { empireLevels: [11, 20], baseHunts: 3, bonusHunts: 1, targetCompletion: 0.55, difficultyMix: { easy: 0.5, standard: 0.4, hard: 0.1, elite: 0, jackpot: 0 }, weeklyPointTarget: 32 },
-  growing: { empireLevels: [21, 30], baseHunts: 3, bonusHunts: 1, targetCompletion: 0.65, difficultyMix: { easy: 0.3, standard: 0.5, hard: 0.18, elite: 0.02, jackpot: 0 }, weeklyPointTarget: 45 },
-  established: { empireLevels: [31, 40], baseHunts: 3, bonusHunts: 2, targetCompletion: 0.72, difficultyMix: { easy: 0.2, standard: 0.45, hard: 0.28, elite: 0.07, jackpot: 0 }, weeklyPointTarget: 60 },
-  elite: { empireLevels: [41, 45], baseHunts: 4, bonusHunts: 2, targetCompletion: 0.78, difficultyMix: { easy: 0.1, standard: 0.35, hard: 0.35, elite: 0.18, jackpot: 0.02 }, weeklyPointTarget: 80 },
-  tycoon: { empireLevels: [46, 50], baseHunts: 4, bonusHunts: 2, targetCompletion: 0.82, difficultyMix: { easy: 0.05, standard: 0.25, hard: 0.35, elite: 0.3, jackpot: 0.05 }, weeklyPointTarget: 100 },
+  // v0.2 rank bands (Financial_Empire_Balancing_Model_v0.2): 1–4 / 5–8 / 9–12 / 13–16 / 17–20 / 21–24.
+  humble: { empireLevels: [1, 4], baseHunts: 3, bonusHunts: 0, targetCompletion: 0.45, difficultyMix: { easy: 0.7, standard: 0.25, hard: 0.05, elite: 0, jackpot: 0 }, weeklyPointTarget: 22 },
+  starter: { empireLevels: [5, 8], baseHunts: 3, bonusHunts: 1, targetCompletion: 0.55, difficultyMix: { easy: 0.5, standard: 0.4, hard: 0.1, elite: 0, jackpot: 0 }, weeklyPointTarget: 32 },
+  growing: { empireLevels: [9, 12], baseHunts: 3, bonusHunts: 1, targetCompletion: 0.65, difficultyMix: { easy: 0.3, standard: 0.5, hard: 0.18, elite: 0.02, jackpot: 0 }, weeklyPointTarget: 45 },
+  established: { empireLevels: [13, 16], baseHunts: 3, bonusHunts: 2, targetCompletion: 0.72, difficultyMix: { easy: 0.2, standard: 0.45, hard: 0.28, elite: 0.07, jackpot: 0 }, weeklyPointTarget: 60 },
+  elite: { empireLevels: [17, 20], baseHunts: 4, bonusHunts: 2, targetCompletion: 0.78, difficultyMix: { easy: 0.1, standard: 0.35, hard: 0.35, elite: 0.18, jackpot: 0.02 }, weeklyPointTarget: 80 },
+  tycoon: { empireLevels: [21, 24], baseHunts: 4, bonusHunts: 2, targetCompletion: 0.82, difficultyMix: { easy: 0.05, standard: 0.25, hard: 0.35, elite: 0.3, jackpot: 0.05 }, weeklyPointTarget: 100 },
 };
 
 export const DIFFICULTY_RULES: Record<HuntDifficulty, DifficultyRule> = {
@@ -207,7 +211,7 @@ export function marketStageForRank(rank: number): MarketStage {
 }
 
 export function marketStageForEmpireLevel(level: number): MarketStage {
-  const safeLevel = Math.max(1, Math.min(50, Math.floor(level)));
+  const safeLevel = Math.max(1, Math.min(24, Math.floor(level)));
   return MARKET_STAGES.find((stage) => safeLevel >= STAGE_RULES[stage].empireLevels[0] && safeLevel <= STAGE_RULES[stage].empireLevels[1]) ?? "tycoon";
 }
 

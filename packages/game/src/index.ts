@@ -1,4 +1,4 @@
-export { BOARD, CASH_SCALE, STARTER_CASH_MINOR, SETTLE_MS } from "./constants.ts";
+export { CASH_SCALE, STARTER_CASH_MINOR, SETTLE_MS } from "./constants.ts";
 export { ONBOARDING_GUIDE, ONBOARDING_MILESTONES, ONBOARDING_XP_THRESHOLDS, onboardingGuideFor, onboardingLevel, onboardingMilestone, onboardingStep, type OnboardingGuide, type OnboardingMilestone, type OnboardingStatus } from "./onboarding.ts";
 export {
   DISTRICT_EVENTS,
@@ -18,56 +18,73 @@ export {
   type SessionVerb,
 } from "./economic_events.ts";
 export {
-  CUSTOMER_SEGMENT_KEYS,
-  CUSTOMER_SEGMENTS,
-  CUSTOMER_SUB_STEPS,
-  CONGESTION_BANDS,
-  MATURATION_FLOWS,
-  MATURATION_HIGH_REPUTATION_THRESHOLD,
-  MATURATION_REPUTATION_THRESHOLD,
-  NEW_PLAYER_ACQUISITION_BOOST,
-  NEW_PLAYER_BOOST_HOURS,
-  SERVICE_AFFINITY,
-  STAGE_DEMAND,
-  BUILDING_CATEGORIES,
-  addressableDemand,
-  applyMaturation,
-  buildingTargetCustomers,
-  competitionModifier,
-  congestionBand,
-  emptyCustomerState,
-  newPlayerBoostActive,
-  newPlayerBoostMultiplier,
-  reputationModifier,
-  serviceModifier,
-  stepCustomers,
-  totalCustomers,
-  weightedStageDemand,
-  type BuildingCategory,
-  type CongestionBand,
-  type CustomerSegmentDef,
-  type CustomerState,
-  type CustomerStateKey,
-  type CustomerStepInput,
-  type CustomerStepResult,
-  type MaturationContext,
-  type MaturationFlow,
-  type StageDemandProfile,
-} from "./customer_model.ts";
+  MAX_EMPIRE_LEVEL,
+  RANK_LEVEL_BANDS,
+  XP_FOR_LEVEL,
+  RANK_XP_MULTIPLIER,
+  LAND_GRADE_XP_MULTIPLIER,
+  XP_SOURCE_BASE,
+  DAILY_XP_CAPS,
+  REVENUE_MILESTONE_THRESHOLDS_MINOR,
+  PROMOTION_GATES,
+  rankXpMultiplier,
+  landGradeXpMultiplier,
+  promotionGateForLevel,
+  evaluateProgression,
+  rankForLevel,
+  maxHexesForLevel,
+  buildingIdsForLevel,
+  buildingsUnlockedAtOrBelow,
+  cumulativeBuildings,
+  levelForXp,
+  clampLevel,
+  progressionRow,
+  type EmpireRank,
+  type ProgressionRow,
+  type V10Level,
+  type V10Gate,
+  type ProgressionCounters,
+  type ProgressionState,
+  type PromotionGateView,
+  type ProgressionEvaluation,
+} from "./progression.ts";
 export {
-  advanceCustomers,
-  bootstrapCustomerSegments,
-  computeCustomerPlan,
+  PLACEMENT_FIT_MIN,
+  PLACEMENT_FIT_MAX,
+  LAND_ACQUISITION_ORDER,
+  STARTER_HEX_ID,
+  canAcquire,
+  frontierHexIds,
+  gradeFor,
+  hexAttribute,
+  hexForParcel,
+  landPrice,
+  parcelForHex,
+  placementFitMultiplier,
+  type AcquireCheck,
+  type HexAttribute,
+  type HexGrade,
+  type LandPrice,
+} from "./land.ts";
+export {
+  BASE_OCCUPANCY,
+  CUSTOMER_SEGMENT_KEYS,
+  POPULATION_PER_CASH_DAY,
+  TRANSACTIONS_PER_CASH_DAY,
+  VOLUME_PER_CASH_DAY,
   normalizeCustomerSegments,
+  offlineCatchUpMinor,
+  offlineNetPerHour,
   roundCustomerSegments,
+  segmentMixForHex,
+  segmentValueMultiplier,
   settleDistrict,
-  type CustomerPlan,
   type CustomerSegments,
   type DistrictState,
   type LedgerLine,
-  type PlannedBuilding,
   type RevenueBreakdown,
   type RevenueModel,
+  type SegmentMix,
   type SettlementResult,
 } from "./settle_phase2.ts";
 export {
@@ -137,25 +154,34 @@ export {
 } from "./performance.ts";
 export {
   PLACEMENT_BUILDING_COUNT,
-  PLACEMENT_SPECIAL_TILE_COUNTS,
+  PLACEMENT_SYNERGIES,
   PLACEMENT_SYNERGY_RULE_COUNT,
   buildingFamily,
-  directAdjacent,
-  edgeDistance,
-  fitsPlacement,
-  orientedFootprint,
   resolvePlacement,
-  specialTileAt,
   type DistrictBonus,
-  type Orientation,
-  type PlacementCard,
   type PlacementEffect,
   type PlacementLink,
   type PlacementPenalty,
   type PlacementResolution,
   type PlacementFamily,
   type SpecialTileType,
-} from "./placement.ts";
+} from "./placement_hex.ts";
+export {
+  HEX_COUNT,
+  HEX_RING,
+  HEX_STAGES,
+  HEX_UNLOCK_BY_STAGE,
+  HEXES,
+  RING_ORDER,
+  hexById,
+  hexDistance,
+  hexNeighbors,
+  isHexId,
+  stageUnlockingHex,
+  unlockedHexIds,
+  type HexDef,
+  type HexStage,
+} from "./hex.ts";
 export {
   BUILDING_EVENT_SENSITIVITY,
   EVENT_CATALOG,
@@ -280,11 +306,9 @@ export {
   type VisitAction,
 } from "./visits.ts";
 
-import { BOARD, CASH_SCALE, SETTLE_MS } from "./constants.ts";
+import { CASH_SCALE } from "./constants.ts";
 import { CARDS, resolveType } from "./buildings.ts";
 import { MARKET_HUNTS, type MarketHuntTemplate } from "./market_phase3.ts";
-import { fitsPlacement, orientedFootprint } from "./placement.ts";
-import type { Orientation } from "./placement.ts";
 
 export type HuntId = (typeof MARKET_HUNTS)[number]["id"];
 
@@ -311,13 +335,14 @@ export const STAGE_LABEL: Record<1 | 2 | 3, string> = {
 export type PlacedCard = {
   id: string;
   type: string;
-  x: number;
-  y: number;
+  hexId: string;
   stage: 1 | 2 | 3;
-  orientation?: Orientation;
   placedAt?: number;
   operationalUntil?: number;
 };
+
+/** Back-compat alias for the square-era name (now hex-based). */
+export type PlacementCard = PlacedCard;
 
 function specOf(type: string) {
   const s = CARDS[resolveType(type)];
@@ -329,10 +354,9 @@ export function stageMul(stage: 1 | 2 | 3): number {
   return stage === 1 ? 1 : stage === 2 ? 1.35 : 1.8;
 }
 
+/** Canonical v0.2 upgrade cost (minor units): stage 2 = 0.35×base×5, stage 3 = 0.45×base×8. */
 export function upgradeCostMinor(type: string, from: 1 | 2): number {
-  const base = specOf(type).placeCostMinor;
-  if (resolveType(type) === "cash_kiosk" && from === 1) return 465 * CASH_SCALE;
-  return from === 1 ? Math.round(base * 1.2) : Math.round(base * 1.8);
+  return specOf(type).upgradeCostMinor(from === 1 ? 2 : 3);
 }
 
 export function plotRank(cards: { type: string }[]): number {
@@ -350,59 +374,6 @@ export function plotRank(cards: { type: string }[]): number {
     if (s) r = Math.max(r, er[s.era] ?? 0);
   }
   return r;
-}
-
-export function boardSize(rank: number): number {
-  return 12 + Math.min(4, Math.max(0, rank)) * 4;
-}
-
-export function fits(
-  cards: PlacedCard[],
-  type: string,
-  x: number,
-  y: number,
-  ignoreId?: string,
-  n = BOARD,
-  orientation: Orientation = 0,
-): boolean {
-  return fitsPlacement(cards, type, x, y, orientation, ignoreId, n);
-}
-
-export function occupancy(cards: PlacedCard[], n = BOARD): boolean[][] {
-  const g = Array.from({ length: n }, () => Array(n).fill(false));
-  for (const c of cards) {
-    const [w, h] = orientedFootprint(c.type, c.orientation ?? 0);
-    for (let dy = 0; dy < h; dy++) {
-      for (let dx = 0; dx < w; dx++) g[c.y + dy][c.x + dx] = true;
-    }
-  }
-  return g;
-}
-
-export function vaultBoost(cards: PlacedCard[]): number {
-  return 1 + cards.filter((c) => specOf(c.type).lineage === "vault").length * 0.08;
-}
-
-export function cardTickMinor(card: PlacedCard, all: PlacedCard[]): number {
-  const spec = specOf(card.type);
-  let add = spec.baseMinorPerTick * stageMul(card.stage);
-  if (spec.lineage === "trade" || spec.lineage === "exchange") {
-    add += all.length * 4 * CASH_SCALE * stageMul(card.stage);
-  }
-  return Math.round(add * vaultBoost(all));
-}
-
-/** Cash earned for one 10s tick. */
-export function tickMinor(cards: PlacedCard[]): number {
-  return cards.reduce((s, c) => s + cardTickMinor(c, cards), 0);
-}
-
-export function cardHourMinor(card: PlacedCard, all: PlacedCard[]): number {
-  return cardTickMinor(card, all) * Math.round(3_600_000 / SETTLE_MS);
-}
-
-export function cardCustomers(card: PlacedCard): number {
-  return Math.round(specOf(card.type).customersBase * stageMul(card.stage));
 }
 
 export function fragmentDropBps(cards: PlacedCard[]): number {
@@ -432,9 +403,10 @@ export function pickHunt(daySeed: number): HuntDef {
   return HUNTS[Math.abs(daySeed) % HUNTS.length]!;
 }
 
+/** Board-derived empire level (v0.2 cap 24); the authoritative level is XP-based (levelForXp). */
 export function empireLevel(cards: { stage?: number }[]): number {
   const raw = cards.reduce((sum, card) => sum + 1 + Math.max(0, (card.stage ?? 1) - 1), 0);
-  return Math.max(1, Math.min(50, raw));
+  return Math.max(1, Math.min(24, raw));
 }
 
 export function fragmentForHunt(

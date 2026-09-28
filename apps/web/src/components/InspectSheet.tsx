@@ -2,22 +2,21 @@ import { useState } from "react";
 import {
   CARDS,
   STAGE_LABEL,
-  cardCustomers,
-  cardHourMinor,
   lineageColor,
   moduleSlotsForRuntimeStage,
-  orientedFootprint,
+  resolveType,
+  stageMul,
   upgradeCostMinor,
 } from "@plotgo/game";
 import type { PlotSnapshot } from "@plotgo/shared";
-import { useModuleEquip, useModuleUnequip, useRotate, useUpgrade } from "../api/hooks";
+import { useModuleEquip, useModuleUnequip, useUpgrade } from "../api/hooks";
 import { useUiStore } from "../state/ui";
 import { cashLabel } from "../utils";
 
 export function InspectSheet({ plot }: { plot: PlotSnapshot }) {
   const inspectId = useUiStore((s) => s.inspectId);
   const setInspectId = useUiStore((s) => s.setInspectId);
-  const rotate = useRotate();
+  const setMoveMode = useUiStore((s) => s.setMoveMode);
   const upgrade = useUpgrade();
   const equip = useModuleEquip(inspectId ?? "");
   const unequip = useModuleUnequip(inspectId ?? "");
@@ -27,10 +26,12 @@ export function InspectSheet({ plot }: { plot: PlotSnapshot }) {
   const card = plot.cards.find((c) => c.id === inspectId);
   if (!card) return null;
 
-  const spec = CARDS[card.type];
-  const [w, h] = orientedFootprint(card.type, card.orientation ?? 0);
-  const hour = cardHourMinor(card, plot.cards);
-  const customers = cardCustomers(card);
+  const spec = CARDS[resolveType(card.type)];
+  // v0.2 economics: base net Cash/day at stage 1, scaled by the stage multiplier.
+  const stageMultiplier = stageMul(card.stage);
+  const baseNetPerDay = spec.baseNetPerDay;
+  const netPerDay = Math.round(baseNetPerDay * stageMultiplier * 100) / 100;
+  const customers = Math.round(netPerDay * 2);
   const revenue = plot.attributes.revenue.find((item) => item.buildingId === card.id);
   const next = card.stage < 3 ? upgradeCostMinor(card.type, card.stage as 1 | 2) : null;
   const moduleSlots = moduleSlotsForRuntimeStage(card.type, card.stage);
@@ -52,7 +53,7 @@ export function InspectSheet({ plot }: { plot: PlotSnapshot }) {
         <div className="modal-art" data-type={lineageColor(spec.lineage)}>
           <span>{spec.name}</span>
           <small>
-            {w}×{h} · {STAGE_LABEL[card.stage]}
+            {spec.footprint[0]}×{spec.footprint[1]} · {STAGE_LABEL[card.stage]}
           </small>
         </div>
         <h2>{spec.name}</h2>
@@ -71,18 +72,17 @@ export function InspectSheet({ plot }: { plot: PlotSnapshot }) {
             <b>{customers.toLocaleString()}</b>
           </div>
           <div>
-            <span>Earn / hour</span>
-            <b>{cashLabel(hour)}</b>
+            <span>Net / day</span>
+            <b>{cashLabel(Math.round(netPerDay * 100))}</b>
+            <small>
+              base {baseNetPerDay} / day · stage ×{stageMultiplier}
+            </small>
           </div>
           <div>
             <span>Footprint</span>
             <b>
-              {w}×{h}
+              {spec.footprint[0]}×{spec.footprint[1]}
             </b>
-          </div>
-          <div>
-            <span>Orientation</span>
-            <b>{card.orientation ?? 0}°</b>
           </div>
           <div>
             <span>Module slots</span>
@@ -169,14 +169,17 @@ export function InspectSheet({ plot }: { plot: PlotSnapshot }) {
           </div>
         ) : null}
         <button
-          className="claim"
+          className="claim secondary"
           type="button"
-          onClick={() => rotate.mutate({ cardId: card.id, orientation: (((card.orientation ?? 0) + 90) % 360) as 0 | 90 | 180 | 270 })}
+          onClick={() => {
+            setInspectId(null);
+            setMoveMode({ cardId: card.id });
+          }}
         >
-          Rotate building 90°
+          Move to another hex
         </button>
         {next === null ? (
-          <p className="note">Max stage. Drag the building to move it.</p>
+          <p className="note">Max stage. Use Move to relocate the building.</p>
         ) : (
           <button className="claim" type="button" onClick={() => upgrade.mutate({ cardId: card.id })}>
             Upgrade to {STAGE_LABEL[(card.stage + 1) as 2 | 3]} · {cashLabel(next)}

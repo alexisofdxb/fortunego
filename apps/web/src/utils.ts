@@ -79,3 +79,12 @@ export function scrollToSelector(selector: string) {
   const element = document.querySelector<HTMLElement>(selector);
   if (element) element.scrollIntoView({ behavior: "smooth", block: "start" });
 }
+
+/** Land grade -> CSS class (Entry/Growth/Premium/Prime/Trophy). */
+export const GRADE_CLASS: Record<string, string> = {
+  Entry: "grade-entry",
+  Growth: "grade-growth",
+  Premium: "grade-premium",
+  Prime: "grade-prime",
+  Trophy: "grade-trophy",
+};

@@ -103,12 +103,13 @@ export const OBJECTIVE_REWARD_CAP_BPS = 500;
 
 export function medianStageDailyEarnedMinor(stage: MarketStage): number {
   const median: Record<MarketStage, number> = {
-    humble: 80_000,
-    starter: 250_000,
-    growing: 700_000,
-    established: 1_800_000,
-    elite: 4_000_000,
-    tycoon: 8_000_000,
+    // v0.2 Cash Flow Model stage-ending medians (Cash/day) x CASH_SCALE.
+    humble: 54_918,
+    starter: 373_977,
+    growing: 1_637_685,
+    established: 3_992_389,
+    elite: 6_698_790,
+    tycoon: 13_966_911,
   };
   return median[stage];
 }

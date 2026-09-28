@@ -2,7 +2,7 @@
   "name": "plotgo",
   "private": true,
   "version": "0.1.0",
-  "description": "Founder Plot — 12×12 financial board. Place cards, earn Cash, hunt stock fragments.",
+  "description": "Founder Plot — 35-hex financial board. Place cards, earn Cash, hunt stock fragments.",
   "scripts": {
     "dev": "pnpm --parallel --filter @plotgo/api --filter @plotgo/web dev",
     "dev:api": "pnpm --filter @plotgo/api dev",
@@ -13,8 +13,10 @@
     "test:onboarding": "pnpm --filter @plotgo/api exec tsx ../../scripts/onboarding_acceptance.ts",
     "test:visits": "pnpm --filter @plotgo/api exec tsx ../../scripts/visits_acceptance.ts",
     "test:retention": "pnpm --filter @plotgo/api exec tsx ../../scripts/retention_acceptance.ts",
-    "test:customers": "pnpm --filter @plotgo/api exec tsx ../../scripts/customer_model_acceptance.ts",
+    "test:land": "pnpm --filter @plotgo/api exec tsx ../../scripts/land_fit_acceptance.ts",
+    "test:progression": "pnpm --filter @plotgo/api exec tsx ../../scripts/progression_v10_acceptance.ts",
     "test:auth": "pnpm --filter @plotgo/api exec tsx ../../scripts/auth_acceptance.ts",
+    "test:hex": "pnpm --filter @plotgo/api exec tsx ../../scripts/hex_board_acceptance.ts",
     "db:push": "pnpm --filter @plotgo/api db:migrate",
     "typecheck": "pnpm -r typecheck"
   },

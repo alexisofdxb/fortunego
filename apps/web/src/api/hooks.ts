@@ -4,6 +4,9 @@ import {
   plotSnapshotSchema,
   playerBoardSchema,
   investmentsViewSchema,
+  landAcquireResponseSchema,
+  landFitResponseSchema,
+  landResponseSchema,
   leaderboardResponseSchema,
   type ClaimedPlotResponse,
   type EventChooseRequest,
@@ -23,7 +26,6 @@ import {
   type PlotSnapshot,
   type PositionsRebalanceRequest,
   type RebalanceResponse,
-  type RotateRequest,
   type SessionSettleRequest,
   type SessionStartRequest,
   type SessionStartResponse,
@@ -73,7 +75,10 @@ export function usePlot() {
       }
       return parsed.data;
     },
-    refetchInterval: () => (useUiStore.getState().drag ? false : 10_000),
+    refetchInterval: () => {
+      const ui = useUiStore.getState();
+      return ui.placeMode || ui.moveMode ? false : 10_000;
+    },
     staleTime: 5_000,
   });
 }
@@ -92,17 +97,52 @@ export function usePlace() {
   );
 }
 
+/** POST /api/land/acquire — claim a frontier parcel (starter grant, deed or cash purchase). */
+/** Full land board with per-hex attributes (drives the hex info drawer). */
+export function useLandView() {
+  return useQuery({
+    queryKey: ["land"],
+    queryFn: () => api("/api/land").then((data) => landResponseSchema.parse(data)),
+  });
+}
+
+export function useAcquireLand() {
+  const queryClient = useQueryClient();
+  const setToast = useUiStore((s) => s.setToast);
+  return useMutation({
+    mutationFn: (hexId: string) =>
+      api("/api/land/acquire", { method: "POST", body: JSON.stringify({ hexId }) }).then((data) => {
+        const parsed = landAcquireResponseSchema.safeParse(data);
+        if (!parsed.success) throw parsed.error;
+        return parsed.data;
+      }),
+    onSuccess: () => {
+      setToast("Parcel acquired");
+      void queryClient.invalidateQueries({ queryKey: PLOT_KEY });
+    },
+    onError: (error) => setToast(error instanceof Error ? error.message : String(error)),
+  });
+}
+
+/** GET /api/land/fit?hexId&type= — placement fit preview for the hovered owned hex. */
+export function useFitPreview(args: { hexId: string; type: string } | null) {
+  return useQuery({
+    queryKey: ["land-fit", args?.hexId, args?.type],
+    enabled: Boolean(args),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const data = await api<unknown>(`/api/land/fit?hexId=${encodeURIComponent(args!.hexId)}&type=${encodeURIComponent(args!.type)}`);
+      const parsed = landFitResponseSchema.safeParse(data);
+      if (!parsed.success) throw parsed.error;
+      return parsed.data;
+    },
+  });
+}
+
 export function useMove() {
   return usePlotMutation(
     (body: MoveRequest) => api("/api/plot/move", { method: "POST", body: JSON.stringify(body) }),
     () => "Building moved.",
-  );
-}
-
-export function useRotate() {
-  return usePlotMutation(
-    (body: RotateRequest) => api("/api/plot/rotate", { method: "POST", body: JSON.stringify(body) }),
-    () => "Building rotated.",
   );
 }
 

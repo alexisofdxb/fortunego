@@ -1,8 +1,10 @@
 import { useState, type ReactNode } from "react";
 import type { PlotSnapshot } from "@plotgo/shared";
 import { ObjectivesPanel } from "./ObjectivesPanel";
+import { PromotionGatePanel } from "./PromotionGatePanel";
 import { closingBellCopy, formatCountdown, scrollToSelector } from "../utils";
 import { useUiStore } from "../state/ui";
+import { XP_SOURCE_BASE } from "@plotgo/game";
 
 function BriefingCard({
   id,
@@ -103,6 +105,25 @@ export function DailyBriefing({ plot }: { plot: PlotSnapshot }) {
           </button>
         </BriefingCard>
       ),
+    );
+  }
+
+  // (a½) Promotion Gate (v1.0) — only while a gate holds the displayed level
+  // back; disappears entirely once every requirement is crossed.
+  const gate = plot.hexBoard.activeGate;
+  if (!isDismissed("promotion") && gate) {
+    const metCount = (["ownedHexes", "builtBusinesses", "stage2PlusBuildings", "uniqueStocks"] as const)
+      .filter((key) => gate.progress[key].current >= gate.progress[key].required).length;
+    cards.push(
+      <BriefingCard
+        id="promotion"
+        title={`Promotion Gate — ${gate.promotionTo}`}
+        summary={gate.met ? `Promotion ready · ${XP_SOURCE_BASE.promotion} XP on crossing` : `${metCount}/4 requirements met · all required`}
+        onDismiss={dismiss}
+        key="promotion"
+      >
+        <PromotionGatePanel board={plot.hexBoard} />
+      </BriefingCard>,
     );
   }
 

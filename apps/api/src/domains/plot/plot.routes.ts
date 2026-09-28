@@ -2,13 +2,12 @@ import { Hono } from "hono";
 import { z } from "zod";
 import {
   CARDS,
-  fits,
   isUnlocked,
   buildingUnlockLevel,
+  isHexId,
   resolveType,
   upgradeCostMinor,
   utcDay,
-  type Orientation,
 } from "@plotgo/game";
 import type { AppEnv } from "../../shared/types";
 import { requirePlayer } from "../../middleware/auth";
@@ -19,6 +18,8 @@ import { currentEmpireLevel, hasTutorialCashAccessSynergy, recordOnboardingMiles
 import { recordMeaningfulAction } from "../../shared/offline";
 import { eventMoveLock, settlePlayer, snapshot } from "../../shared/snapshot";
 import { newId } from "../../shared/types";
+import { ownedLandRows } from "../land/land.service";
+import { awardConstruction, awardUpgrade } from "../player/empire.service";
 
 export const plotRoutes = new Hono<AppEnv>();
 
@@ -31,10 +32,14 @@ plotRoutes.get("/api/plot", requirePlayer, async (c) => {
 
 const Place = z.object({
   type: z.string(),
-  x: z.number().int().min(0).max(11),
-  y: z.number().int().min(0).max(11),
-  orientation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).default(0),
+  hexId: z.string(),
 });
+
+/** 403 helper for hexes the player does not own yet (v0.2 land gating). */
+async function hexNotOwnedError(playerId: string, hexId: string): Promise<{ error: string } | null> {
+  const rows = await ownedLandRows(playerId);
+  return rows.some((row) => row.hexId === hexId) ? null : { error: "Acquire this parcel first" };
+}
 
 plotRoutes.post("/api/plot/place", requirePlayer, async (c) => {
   const id = c.get("player").id;
@@ -43,7 +48,11 @@ plotRoutes.post("/api/plot/place", requirePlayer, async (c) => {
   const body = Place.parse(await c.req.json());
   const spec = CARDS[resolveType(body.type)];
   if (!spec) return c.json({ error: "Unknown building" }, 400);
+  if (!isHexId(body.hexId)) return c.json({ error: "Unknown hex" }, 400);
   const level = await currentEmpireLevel(id, p.board);
+  const notOwned = await hexNotOwnedError(id, body.hexId);
+  if (notOwned) return c.json(notOwned, 403);
+  if (p.board.some((card) => card.hexId === body.hexId)) return c.json({ error: "Hex is already occupied" }, 409);
   if (!isUnlocked(spec.id, p.board, level)) {
     const unlockLevel = buildingUnlockLevel(spec.id);
     return c.json({ error: `Building Card unlocks at Empire Level ${unlockLevel ?? "?"}.` }, 400);
@@ -51,19 +60,14 @@ plotRoutes.post("/api/plot/place", requirePlayer, async (c) => {
   if (p.cashMinor < spec.placeCostMinor) {
     return c.json({ error: "Not enough Cash" }, 400);
   }
-  if (!fits(p.board, spec.id, body.x, body.y, undefined, 12, body.orientation)) {
-    return c.json({ error: "Does not fit" }, 400);
-  }
   const cardId = newId();
   await prisma.card.create({
     data: {
       id: cardId,
       playerId: id,
       type: spec.id,
-      x: body.x,
-      y: body.y,
+      hexId: body.hexId,
       stage: 1,
-      orientation: body.orientation,
       placedAt: Date.now(),
       operationalUntil: 0,
     },
@@ -80,6 +84,8 @@ plotRoutes.post("/api/plot/place", requirePlayer, async (c) => {
   if (spec.id === "cash_kiosk") await recordOnboardingMilestone(id, "onboarding_first_build", "plot.place");
   if (spec.id === "trading_booth") await recordOnboardingMilestone(id, "onboarding_second_business", "plot.place");
   if (spec.id === "savings_stand") await recordOnboardingMilestone(id, "onboarding_third_business", "plot.place");
+  // v1.0: first-time construction XP (100 × building-rank multiplier).
+  await awardConstruction(id, spec);
   const placedBoard = await loadCards(id);
   if (hasTutorialCashAccessSynergy(placedBoard)) await recordOnboardingMilestone(id, "onboarding_first_synergy", "placement.resolve");
   await recordMeaningfulAction(id, `place:${spec.id}`);
@@ -88,9 +94,7 @@ plotRoutes.post("/api/plot/place", requirePlayer, async (c) => {
 
 const Move = z.object({
   cardId: z.string(),
-  x: z.number().int().min(0).max(11),
-  y: z.number().int().min(0).max(11),
-  orientation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
+  hexId: z.string(),
 });
 
 plotRoutes.post("/api/plot/move", requirePlayer, async (c) => {
@@ -108,16 +112,16 @@ plotRoutes.post("/api/plot/move", requirePlayer, async (c) => {
   const eventLock = eventMoveLock(card, dayData.event.id);
   if (eventLock && !tutorialCorrection) return c.json({ error: eventLock }, 409);
   if (card.operationalUntil && card.operationalUntil > Date.now()) return c.json({ error: "Building is still in relocation downtime" }, 409);
-  const orientation = (body.orientation ?? card.orientation ?? 0) as Orientation;
-  if (!fits(p.board, card.type, body.x, body.y, card.id, 12, orientation)) {
-    return c.json({ error: "Does not fit" }, 400);
-  }
+  if (!isHexId(body.hexId)) return c.json({ error: "Unknown hex" }, 400);
+  const notOwned = await hexNotOwnedError(id, body.hexId);
+  if (notOwned) return c.json(notOwned, 403);
+  if (p.board.some((other) => other.id !== card.id && other.hexId === body.hexId)) return c.json({ error: "Hex is already occupied" }, 409);
   const freeWindow = !card.placedAt || now - card.placedAt < 24 * 3_600_000;
   const normalFee = freeWindow ? 0 : Math.round(buildValueMinor(card) * 0.05);
   const fee = tutorialCorrection ? 0 : normalFee;
   if (p.cashMinor < fee) return c.json({ error: "Not enough Cash for relocation fee" }, 400);
   const downtimeUntil = tutorialCorrection || freeWindow ? 0 : now + 15 * 60_000;
-  await prisma.card.update({ where: { id: body.cardId }, data: { x: body.x, y: body.y, orientation, operationalUntil: downtimeUntil } });
+  await prisma.card.update({ where: { id: body.cardId }, data: { hexId: body.hexId, operationalUntil: downtimeUntil } });
   if (tutorialCorrection) {
     await claimTutorialRecovery(id, "free_tutorial_relocation", normalFee, {
       cardId: body.cardId,
@@ -131,45 +135,6 @@ plotRoutes.post("/api/plot/move", requirePlayer, async (c) => {
     await recordLedger(prisma, id, day, "relocation", -fee, p.cashMinor - fee, { cardId: body.cardId, feeMinor: fee, downtimeUntil });
   }
   await recordMeaningfulAction(id, `move:${body.cardId}`);
-  return c.json(await snapshot(id, newId()));
-});
-
-plotRoutes.post("/api/plot/rotate", requirePlayer, async (c) => {
-  const id = c.get("player").id;
-  const p = await settlePlayer(id);
-  if (!p) return c.json({ error: "no plot" }, 404);
-  const body = z.object({ cardId: z.string(), orientation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]) }).parse(await c.req.json());
-  const card = p.board.find((x) => x.id === body.cardId);
-  if (!card) return c.json({ error: "missing card" }, 404);
-  if (card.orientation === body.orientation) return c.json(await snapshot(id));
-  const now = Date.now();
-  const tutorialCorrection = (await tutorialRelocationAvailable(id, p.board, now)) &&
-    (card.type === "cash_kiosk" || card.type === "savings_stand");
-  // Rotation follows the same authoritative relocation rules as a move.
-  const dayData = await districtDay(id, utcDay());
-  const eventLock = eventMoveLock(card, dayData.event.id);
-  if (eventLock && !tutorialCorrection) return c.json({ error: eventLock }, 409);
-  if (card.operationalUntil && card.operationalUntil > Date.now()) return c.json({ error: "Building is still in relocation downtime" }, 409);
-  if (!fits(p.board, card.type, card.x, card.y, card.id, 12, body.orientation)) return c.json({ error: "Rotated footprint does not fit" }, 400);
-  const freeWindow = !card.placedAt || now - card.placedAt < 24 * 3_600_000;
-  const normalFee = freeWindow ? 0 : Math.round(buildValueMinor(card) * 0.05);
-  const fee = tutorialCorrection ? 0 : normalFee;
-  if (p.cashMinor < fee) return c.json({ error: "Not enough Cash for relocation fee" }, 400);
-  const downtimeUntil = tutorialCorrection || freeWindow ? 0 : now + 15 * 60_000;
-  await prisma.card.update({ where: { id: card.id }, data: { orientation: body.orientation, operationalUntil: downtimeUntil } });
-  if (tutorialCorrection) {
-    await claimTutorialRecovery(id, "free_tutorial_relocation", normalFee, {
-      cardId: card.id,
-      type: card.type,
-      reason: "cash_access_synergy_recovery",
-    });
-  }
-  if (fee > 0) {
-    const paid = await prisma.player.updateMany({ where: { id, cashMinor: { gte: fee } }, data: { cashMinor: { decrement: fee } } });
-    if (paid.count !== 1) return c.json({ error: "Not enough Cash for relocation fee" }, 409);
-    await recordLedger(prisma, id, utcDay(), "rotation", -fee, p.cashMinor - fee, { cardId: card.id, feeMinor: fee, downtimeUntil });
-  }
-  await recordMeaningfulAction(id, `rotate:${card.id}`);
   return c.json(await snapshot(id, newId()));
 });
 
@@ -195,6 +160,8 @@ plotRoutes.post("/api/plot/upgrade", requirePlayer, async (c) => {
   if (paid.count !== 1) return c.json({ error: "Not enough Cash" }, 409);
   await recordLedger(prisma, id, utcDay(), "upgrade", -cost, p.cashMinor - cost, { cardId, type: card.type, toStage: card.stage + 1 });
   if (card.type === "cash_kiosk" && card.stage === 1) await recordOnboardingMilestone(id, "onboarding_first_upgrade", "plot.upgrade");
+  // v1.0: stage-upgrade XP (50/100 × building-rank multiplier).
+  await awardUpgrade(id, CARDS[resolveType(card.type)]!, (card.stage + 1) as 2 | 3);
   await recordMeaningfulAction(id, `upgrade:${cardId}`);
   return c.json(await snapshot(id));
 });

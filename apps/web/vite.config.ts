@@ -12,6 +12,16 @@ export default defineConfig({
       "@plotgo/game": path.resolve(gameEntry),
     },
   },
+  build: {
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("index.html", import.meta.url)),
+        // Standalone Three.js environment prototype (does not touch the game).
+        world: fileURLToPath(new URL("world.html", import.meta.url)),
+        map: fileURLToPath(new URL("map.html", import.meta.url)),
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {

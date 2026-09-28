@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
-import { announcedWindowsForWeek, isoWeek, objectiveRewardMinor } from "@plotgo/game";
+import { announcedWindowsForWeek, isoWeek, objectiveRewardMinor, unlockedHexIds } from "@plotgo/game";
 
 // Retention loop acceptance (PLOT_Daily_Weekly_Retention_Loop_v1.0):
 // offer board cadence/expiry/reroll, daily objectives + evidence completion,
@@ -137,13 +137,14 @@ async function createPlayerDirect(playerId: string, population = 0): Promise<voi
 }
 
 async function seedBoard(playerId: string): Promise<string[]> {
+  const hexes = unlockedHexIds("humble");
   const cards = [
-    { id: `retention-card-trade-${randomUUID()}`, type: "trading_booth", x: 0, y: 0 },
-    { id: `retention-card-fund-${randomUUID()}`, type: "small_fund", x: 2, y: 0 },
-    { id: `retention-card-loan-${randomUUID()}`, type: "micro_loan", x: 4, y: 0 },
+    { id: `retention-card-trade-${randomUUID()}`, type: "trading_booth", hexId: hexes[0]! },
+    { id: `retention-card-fund-${randomUUID()}`, type: "small_fund", hexId: hexes[1]! },
+    { id: `retention-card-loan-${randomUUID()}`, type: "micro_loan", hexId: hexes[2]! },
   ];
   await prisma.card.createMany({
-    data: cards.map((card) => ({ ...card, playerId, stage: 1, orientation: 0, placedAt: now, operationalUntil: 0 })),
+    data: cards.map((card) => ({ ...card, playerId, stage: 1, placedAt: now, operationalUntil: 0 })),
   });
   return cards.map((card) => card.id);
 }

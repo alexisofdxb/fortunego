@@ -1,385 +1,295 @@
 import {
   BUILDING_LIST,
-  CANONICAL_MODULE_CATALOG,
   CARDS,
-  CUSTOMER_SEGMENTS,
-  DISTRICT_EVENTS,
-  ECONOMIC_EVENTS,
-  EVENT_CATALOG,
-  EVENT_DECISIONS,
-  EVENT_MISSIONS,
-  EVENT_MODULE_INTERACTIONS,
-  INVEST_MAX_MINOR,
-  INVEST_MIN_MINOR,
-  INVEST_SHARE_BPS,
-  INVEST_TERM_DAYS,
-  MARKET_STAGES,
-  MATURATION_FLOWS,
-  NEW_PLAYER_ACQUISITION_BOOST,
-  OBJECTIVE_LANES,
-  OBJECTIVE_REWARD_CAP_BPS,
-  OBJECTIVE_TEMPLATES,
-  VISIT_ACTIONS,
-  VISIT_NOTIONAL_MINOR,
-  addressableDemand,
-  advanceOperatingStreak,
-  announcedWindowsForWeek,
-  ANNOUNCED_WINDOWS_PER_WEEK,
-  ANNOUNCED_WINDOW_MAX_DURATION_MS,
-  ANNOUNCED_WINDOW_MIN_DURATION_MS,
-  ANNOUNCED_WINDOW_MIN_GAP_MS,
-  applyMaturation,
-  buildingModuleProfile,
-  buildingTargetCustomers,
-  chooseDifficultyForAccount,
-  competitionModifier,
-  congestionBand,
-  emptyCustomerState,
-  eventForDay,
-  investAmountOk,
-  investMaturesDay,
-  investYieldMinor,
-  medianStageDailyEarnedMinor,
-  moduleBuildingFamily,
-  moduleRarityAllowed,
-  moduleEquippable,
-  moduleStageAllowed,
-  newPlayerBoostMultiplier,
-  objectiveRewardMinor,
-  reputationModifier,
-  resolveArchetype,
-  resolveModuleEffects,
-  serviceModifier,
+  HEXES,
+  HEX_COUNT,
+  RING_ORDER,
+  LAND_ACQUISITION_ORDER,
+  STARTER_HEX_ID,
+  XP_FOR_LEVEL,
+  MAX_EMPIRE_LEVEL,
+  PLACEMENT_FIT_MIN,
+  PLACEMENT_FIT_MAX,
+  canAcquire,
+  cumulativeBuildings,
+  frontierHexIds,
+  hexAttribute,
+  hexById,
+  hexDistance,
+  hexForParcel,
+  hexNeighbors,
+  landPrice,
+  levelForXp,
+  maxHexesForLevel,
+  placementFitMultiplier,
+  progressionRow,
+  rankForLevel,
+  segmentValueMultiplier,
+  buildingsUnlockedAtOrBelow,
+  upgradeCostMinor,
   settleDistrict,
-  stepCustomers,
-  totalCustomers,
-  utcDaysBetween,
-  visitEligible,
-  visitFeeMinor,
-  PHASE4_INSTRUMENTS,
-  applyPortfolioMarks,
-  phase4Marks,
-  type BuildingCategory,
-  type PlacedCard,
+  // Empire_Progression_System_v1.0 (canonical XP curve / gates / sources).
+  DAILY_XP_CAPS,
+  XP_SOURCE_BASE,
+  PROMOTION_GATES,
+  RANK_XP_MULTIPLIER,
+  LAND_GRADE_XP_MULTIPLIER,
+  REVENUE_MILESTONE_THRESHOLDS_MINOR,
+  evaluateProgression,
+  promotionGateForLevel,
+  rankXpMultiplier,
+  landGradeXpMultiplier,
+  type HexGrade,
 } from "@plotgo/game";
+import affinities from "../packages/game/src/v02/affinities.json" with { type: "json" };
+
+// ---------------------------------------------------------------------------
+// Balance regression — Financial_Empire_Balancing_Model_v0.2 level geometry +
+// Empire_Progression_System_v1.0 XP (canonical; replaces the v0.2-flat XP).
+// Exact-number reproductions of the v0.2 workbook (packages/game/src/v02):
+// building economics, 24-level progression geometry, the 35-parcel land table,
+// placement fit, and a settle smoke test; plus the v1.0 cumulative XP curve,
+// promotion gates, evaluateProgression workbook example, rank/grade multiplier
+// tables, daily caps and XP source base amounts. Retired v0.1 sections (30-day
+// kiosk ramp, rep/service/competition modifiers, congestion bands, Humble
+// 5-building scenario, customer Model Checks) tested mechanics that no longer
+// exist in the engine and were removed with them.
+// ---------------------------------------------------------------------------
 
 const fail = (message: string): never => { throw new Error(`balance regression: ${message}`); };
 const assert = (condition: unknown, message: string): asserts condition => { if (!condition) fail(message); };
-const eras = ["humble", "starter", "growing", "established", "elite", "tycoon"] as const;
-const event = eventForDay("2026-09-25", "balance-regression");
-const marks = phase4Marks("2026-09-25", "balance-regression");
-assert(JSON.stringify(marks) === JSON.stringify(phase4Marks("2026-09-25", "balance-regression")), "Phase 4 marks are not deterministic");
-assert(marks.length === PHASE4_INSTRUMENTS.length && marks.find((mark) => mark.ticker === "CASH")?.returnBps === 0, "Phase 4 Cash mark is not zero");
-assert(marks.every((mark) => mark.returnBps >= -500 && mark.returnBps <= 500), "Phase 4 mark exceeded the ±500 bps cap");
-const forcedMarks = [
-  { ticker: "NVDA" as const, returnBps: 500 },
-  { ticker: "AAPL" as const, returnBps: -500 },
-  { ticker: "TSLA" as const, returnBps: 0 },
-  { ticker: "CASH" as const, returnBps: 0 },
-];
-const concentrated = applyPortfolioMarks([{ ticker: "NVDA", weightBps: 10_000, allocatedMinor: 10_000_000_000 }], forcedMarks);
-const diversified = applyPortfolioMarks([{ ticker: "NVDA", weightBps: 5_000, allocatedMinor: 5_000_000_000 }, { ticker: "AAPL", weightBps: 5_000, allocatedMinor: 5_000_000_000 }], forcedMarks);
-assert(concentrated.endAumMinor !== diversified.endAumMinor, "Different Phase 4 weights did not produce different AUM results");
-assert(concentrated.feeMinor !== diversified.feeMinor, "Different Phase 4 weights did not produce different AUM fees");
-assert(concentrated.endAumMinor === concentrated.preFeeAumMinor - concentrated.feeMinor, "Phase 4 fee did not reconcile book value");
-
-function card(type: string, stage: 1 | 2 | 3 = 1, x = 0, y = 0): PlacedCard {
-  return { id: `${type}-${stage}-${x}-${y}`, type, stage, x, y, orientation: 0 };
-}
-
-for (const era of eras) {
-  const spec = BUILDING_LIST.find((candidate) => candidate.era === era);
-  assert(spec, `missing representative building for ${era}`);
-  const results = ([1, 2, 3] as const).map((stage) => settleDistrict([card(spec.id, stage)], event, "walk", { cashMinor: 1_000_000, reputationBps: 5_000, conditionBps: 10_000 }, stage * 101));
-  assert(results.every((result) => Number.isFinite(result.cashDeltaMinor)), `${era} cash delta is not finite`);
-  assert(results.every((result) => result.capacity > 0 && result.riskBps >= 0 && result.riskBps <= 9_500), `${era} settlement left balance bounds`);
-  assert(results[1]!.capacity >= results[0]!.capacity && results[2]!.capacity >= results[1]!.capacity, `${era} stage capacity regressed`);
-}
-
-const expectedSlots = { humble: [3], starter: [3, 6], growing: [3, 7], established: [3, 6, 9], elite: [3, 6, 9], tycoon: [3, 6, 9, 11] } as const;
-for (const spec of BUILDING_LIST) {
-  const profile = buildingModuleProfile(spec.id);
-  assert(profile.maxModuleSlots === expectedSlots[spec.era].length, `${spec.id} slot count diverged from workbook`);
-  assert(JSON.stringify(profile.slotUnlockLevels) === JSON.stringify(expectedSlots[spec.era]), `${spec.id} slot unlock levels diverged from workbook`);
-  assert(profile.legendaryLimit === 1, `${spec.id} Legendary limit diverged from workbook`);
-  assert(profile.allowedCategories.includes("Universal"), `${spec.id} lost Universal compatibility`);
-}
-
-const trading = resolveArchetype([card("trading_booth", 1, 0, 0), card("fx_stand", 1, 1, 0)], "trading");
-assert(!trading.suppressed && trading.effects.activityBps === 1_000, "pure trading board did not receive its theme bonus");
-const underThreshold = resolveArchetype([card("trading_booth", 1, 0, 0), card("cash_kiosk", 1, 1, 0), card("savings_stand", 1, 2, 0)], "trading");
-assert(underThreshold.suppressed && underThreshold.dominantShare < 0.4, "40% trading threshold was not enforced");
-const opposing = resolveArchetype([card("trading_booth", 1, 0, 0), card("cash_kiosk", 1, 1, 0)], "trading");
-assert(opposing.suppressed && opposing.reason?.includes("Banking"), "opposing banking tags did not suppress trading");
-const banking = resolveArchetype([card("cash_kiosk", 1, 0, 0), card("savings_stand", 1, 1, 0)], "banking");
-assert(!banking.suppressed && banking.effects.riskReliefBps === 1_000, "pure banking board did not receive its risk relief");
-
-const byRarity = (rarity: string) => CANONICAL_MODULE_CATALOG.find((entry) => entry.rarity.toLowerCase() === rarity)!;
-assert(moduleStageAllowed("cash_kiosk", byRarity("common").id), "Common module rejected on Humble building");
-assert(!moduleStageAllowed("cash_kiosk", byRarity("uncommon").id), "Uncommon module bypassed Humble stage gate");
-assert(moduleStageAllowed("small_fund", byRarity("uncommon").id), "Uncommon module rejected on Starter building");
-assert(moduleStageAllowed("asset_office", byRarity("rare").id), "Rare module rejected on Growing building");
-assert(moduleStageAllowed("securities_exchange", byRarity("epic").id), "Epic module rejected on Established building");
-assert(moduleStageAllowed("global_brokerage", byRarity("legendary").id), "Legendary module rejected on Elite building");
-assert(!moduleRarityAllowed("cash_kiosk", "uncommon"), "Humble building accepted an Uncommon rarity limit");
-assert(moduleRarityAllowed("small_fund", "uncommon"), "Starter building rejected its Uncommon rarity limit");
-assert(moduleRarityAllowed("asset_office", "rare"), "Growing building rejected its Rare rarity limit");
-assert(moduleRarityAllowed("securities_exchange", "epic"), "Established building rejected its Epic rarity limit");
-assert(moduleRarityAllowed("global_brokerage", "legendary"), "Elite building rejected its Legendary rarity limit");
-assert(moduleEquippable("cash_kiosk", byRarity("common").id, 1), "Common Module failed the complete equip matrix");
-assert(!moduleEquippable("cash_kiosk", byRarity("uncommon").id, 1), "Uncommon Module bypassed the complete equip matrix");
-const universalCommon = CANONICAL_MODULE_CATALOG.find((entry) => entry.rarity === "Common" && entry.families === "All")!;
-assert(moduleEquippable("trading_booth", universalCommon.id, 1), "Universal Common Module failed the Trading family matrix");
-
-const capped = resolveModuleEffects("intl_bank", CANONICAL_MODULE_CATALOG.map((entry) => entry.id), { risk: {}, reputation: 80, serviceQuality: 80, empireStage: "tycoon" });
-assert(capped.customerAcquisitionBps <= 25_000, "customer acquisition cap exceeded");
-assert(capped.retentionBps <= 15_000, "retention cap exceeded");
-assert(capped.capacityBps <= 20_000, "capacity cap exceeded");
-assert(capped.activityEfficiencyBps <= 15_000, "activity cap exceeded");
-assert(capped.operatingCostReductionBps <= 12_000, "operating cost cap exceeded");
-assert(capped.serviceQualityPoints <= 10, "service quality cap exceeded");
-for (const value of Object.values(capped.riskDeltas)) assert(value >= -15 && value <= 15, "risk cap exceeded");
-
-// Phase 5 — visit/invest pure helpers.
-assert(VISIT_NOTIONAL_MINOR.trade === 20_000 && VISIT_NOTIONAL_MINOR.deposit === 50_000 && VISIT_NOTIONAL_MINOR.borrow === 30_000, "visit notionals diverged from the spec");
-assert(INVEST_TERM_DAYS === 3 && INVEST_SHARE_BPS === 2_500 && INVEST_MIN_MINOR === 10_000 && INVEST_MAX_MINOR === 500_000, "invest constants diverged from the spec");
-for (const lineage of ["exchange", "trade", "broker"] as const) assert(visitEligible(lineage, "trade"), `${lineage} must accept the trade action`);
-for (const lineage of ["fund"] as const) assert(visitEligible(lineage, "deposit"), `${lineage} must accept the deposit action`);
-for (const lineage of ["bank", "lend"] as const) assert(visitEligible(lineage, "borrow"), `${lineage} must accept the borrow action`);
-assert(!visitEligible("fund", "trade") && !visitEligible("vault", "deposit") && !visitEligible("broker", "borrow") && !visitEligible("research", "trade"), "ineligible lineages accepted a visit action");
-for (const spec of BUILDING_LIST) {
-  const eligible = VISIT_ACTIONS.some((action) => visitEligible(spec.lineage, action));
-  assert(!eligible || spec.rateBps > 0, `${spec.id} is visit-eligible but has no catalog rate`);
-  assert(spec.rateBps >= 0 && spec.rateBps <= 500, `${spec.id} visit rate left the 0–500 bps band`);
-}
-assert(visitFeeMinor("trade", CARDS.trading_booth.rateBps, 1_000_000) === Math.round(20_000 * CARDS.trading_booth.rateBps / 10_000), "trade fee did not equal notional × rate");
-assert(visitFeeMinor("deposit", CARDS.small_fund.rateBps, 1_000_000) === Math.round(50_000 * CARDS.small_fund.rateBps / 10_000), "deposit fee did not equal notional × rate");
-assert(visitFeeMinor("borrow", 40, 50) === 50, "visit fee was not capped at the visitor balance");
-assert(visitFeeMinor("trade", 25, 0) === 0, "visit fee for a 0-balance visitor was not zero");
-assert(investYieldMinor(10_000, INVEST_SHARE_BPS) === 2_500, "yield was not 25% of gross building revenue");
-assert(investYieldMinor(0, INVEST_SHARE_BPS) === 0, "yield was not zero for a zero-gross building");
-assert(investYieldMinor(1_000, 20_000) === 1_000, "yield share was not clamped to 100%");
-assert(investMaturesDay("2026-01-30") === "2026-02-02", "maturity day was not startedDay + 3 UTC days");
-assert(utcDaysBetween("2026-01-30", "2026-02-02") === INVEST_TERM_DAYS, "UTC day diff diverged from the term");
-assert(investAmountOk(INVEST_MIN_MINOR) && investAmountOk(INVEST_MAX_MINOR), "invest bounds rejected the boundary amounts");
-assert(!investAmountOk(INVEST_MIN_MINOR - 1) && !investAmountOk(INVEST_MAX_MINOR + 1) && !investAmountOk(10_000.5), "invest bounds accepted an out-of-range amount");
-
-// Phase 6 — retention loop pure invariants (spec sheets 05/07/08/10/13/19).
-assert(OBJECTIVE_TEMPLATES.length === 6, "objective catalog must hold exactly 6 templates");
-for (const lane of OBJECTIVE_LANES) {
-  const laneTemplates = OBJECTIVE_TEMPLATES.filter((template) => template.lane === lane);
-  assert(laneTemplates.length >= 2 && laneTemplates.length <= 3, `objective lane ${lane} must have 2-3 templates, got ${laneTemplates.length}`);
-  assert(new Set(laneTemplates.map((template) => template.id)).size === laneTemplates.length, `objective lane ${lane} has duplicate template ids`);
-  assert(laneTemplates.every((template) => template.evidence.kind !== undefined), `objective lane ${lane} has a template without server evidence`);
-}
-for (const stage of MARKET_STAGES) {
-  const median = medianStageDailyEarnedMinor(stage);
-  const reward = objectiveRewardMinor(stage);
-  assert(reward > 0, `objective reward for ${stage} must be positive`);
-  assert(3 * reward <= Math.floor(median * (OBJECTIVE_REWARD_CAP_BPS / 10_000)), `objective reward cap exceeded for ${stage}: 3x${reward} > 5% of ${median}`);
-  assert(medianStageDailyEarnedMinor(stage) === median, `median stage daily earned not stable for ${stage}`);
-}
-// No-direct-score / no-direct-PLOT invariant: objective rewards are Cash only.
-assert(OBJECTIVE_TEMPLATES.every((template) => !/plot|score|point/i.test(template.title)), "objective template titles must not promise score or PLOT");
-
-// Announced event calendar: deterministic, <=2/week, >=18h spacing, 8-36h duration.
-const sampleWeeks = ["2026-W01", "2026-W07", "2026-W19", "2026-W33", "2026-W52", "2027-W02", "2027-W21", "2028-W40"];
-for (const week of sampleWeeks) {
-  const windows = announcedWindowsForWeek(week);
-  assert(JSON.stringify(windows) === JSON.stringify(announcedWindowsForWeek(week)), `announced windows for ${week} are not deterministic`);
-  assert(windows.length <= ANNOUNCED_WINDOWS_PER_WEEK, `announced windows for ${week} exceed 2/week`);
-  for (let i = 0; i < windows.length; i++) {
-    const window = windows[i]!;
-    const durationMs = window.endsAt - window.startsAt;
-    assert(durationMs >= ANNOUNCED_WINDOW_MIN_DURATION_MS && durationMs <= ANNOUNCED_WINDOW_MAX_DURATION_MS, `announced window duration out of the 8-36h band for ${week}`);
-    if (i > 0) assert(window.startsAt - windows[i - 1]!.endsAt >= ANNOUNCED_WINDOW_MIN_GAP_MS, `announced windows for ${week} spaced <18h apart`);
-  }
-}
-
-// Operating streak is cosmetic-only math: increments on consecutive eligible
-// days, resets on a missed day, longest never decreases.
-assert(JSON.stringify(advanceOperatingStreak(2, 4, true)) === JSON.stringify({ streak: 3, longest: 4 }), "streak did not increment on an eligible day");
-assert(JSON.stringify(advanceOperatingStreak(2, 4, false)) === JSON.stringify({ streak: 0, longest: 4 }), "streak did not reset on a missed day");
-assert(advanceOperatingStreak(4, 2, true).longest === 5, "longest streak did not update from a new max");
-assert(advanceOperatingStreak(0, 0, true).streak === 1, "first eligible day did not start the streak at 1");
-
-// Account-age rule (spec sheet 05): first 3 account days are Easy/Standard only.
-for (const stage of MARKET_STAGES) {
-  for (let seed = 0; seed < 250; seed += 17) {
-    for (const age of [0, 1, 2]) {
-      const difficulty = chooseDifficultyForAccount(stage, seed, age);
-      assert(difficulty === "easy" || difficulty === "standard", `account-age rule violated for ${stage} seed=${seed} age=${age}: ${difficulty}`);
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Phase 1 — canonical customer/economic model (PLOT_Customer_Economic_Simulation_v0.1).
-// Reproduces the doc's published tables exactly.
-// ---------------------------------------------------------------------------
 const approx = (actual: number, expected: number, tolerance: number, message: string) => {
   if (!(Math.abs(actual - expected) <= tolerance)) fail(`${message}: expected ${expected}, got ${actual}`);
 };
 
-// Acquisition & Retention sheet: modifier examples.
-approx(reputationModifier(55), 1.035, 1e-12, "reputation modifier at 55 diverged from the doc");
-approx(reputationModifier(100), 1.35, 1e-12, "reputation modifier at 100 diverged from the doc");
-approx(serviceModifier(58), 1.048, 1e-12, "service modifier at 58 diverged from the doc");
-approx(serviceModifier(100), 1.3, 1e-12, "service modifier at 100 diverged from the doc");
-approx(competitionModifier(1), 1, 1e-12, "competition modifier at 1 diverged from the doc");
-approx(competitionModifier(2), 0.8696, 1e-4, "competition modifier at 2 diverged from the doc (0.87)");
-approx(competitionModifier(4), 0.6897, 1e-4, "competition modifier at 4 diverged from the doc (0.69)");
+// --- (a) Building economics (v02/buildings.json via the catalog) -------------
+const kiosk = CARDS.cash_kiosk;
+assert(kiosk.baseNetPerDay === 25, `BLD001 kiosk baseNetPerDay must be 25, got ${kiosk.baseNetDay ?? kiosk.baseNetPerDay}`);
+assert(kiosk.category === "Retail Finance", "BLD001 category must be Retail Finance");
+// Stage multipliers (v02/assumptions.json): 1 / 1.35 / 1.8.
+approx(kiosk.baseNetPerDay * 1.35, 33.75, 1e-12, "kiosk stage-2 net must be 33.75");
+approx(kiosk.baseNetPerDay * 1.8, 45, 1e-12, "kiosk stage-3 net must be 45");
+assert(upgradeCostMinor("cash_kiosk", 1) === 4_375, `kiosk stage-2 upgrade must cost 4375 minor, got ${upgradeCostMinor("cash_kiosk", 1)}`);
+assert(upgradeCostMinor("cash_kiosk", 2) === 9_000, `kiosk stage-3 upgrade must cost 9000 minor, got ${upgradeCostMinor("cash_kiosk", 2)}`);
+assert(BUILDING_LIST.length === 50, `catalog must hold 50 buildings, got ${BUILDING_LIST.length}`);
+assert(BUILDING_LIST[49]!.name === "Financial Empire Headquarters" && BUILDING_LIST[49]!.baseNetPerDay === 20_000, "BLD050 Financial Empire Headquarters must net 20000/day");
+assert(BUILDING_LIST[23]!.baseNetPerDay === 520, "BLD024 spot-check must net 520/day");
+assert(BUILDING_LIST[39]!.baseNetPerDay === 2_850, "BLD040 spot-check must net 2850/day");
+// v0.2 workbook cost basis: stage 2 = 0.35×base×5, stage 3 = 0.45×base×8.
+for (const spec of BUILDING_LIST) {
+  const s2 = Math.round(spec.baseNetPerDay * 0.35 * 5 * 100) / 100;
+  const s3 = Math.round(spec.baseNetPerDay * 0.45 * 8 * 100) / 100;
+  approx(upgradeCostMinor(spec.id, 1) / 100, s2, 0.011, `${spec.id} stage-2 upgrade diverged from 0.35×base×5`);
+  approx(upgradeCostMinor(spec.id, 2) / 100, s3, 0.011, `${spec.id} stage-3 upgrade diverged from 0.45×base×8`);
+  assert(spec.baseNetPerDay > 0, `${spec.id} must have a positive base net`);
+}
 
-// Capacity / congestion bands: exact doc multipliers and 80/95/100% boundaries.
-const healthy = congestionBand(0.8);
-assert(healthy.id === "healthy" && healthy.acquisitionMod === 1 && healthy.churnMod === 1 && healthy.satisfactionPenaltyBps === 0 && healthy.revenueEfficiency === 1, "healthy band (≤80%) diverged from the doc");
-const busy = congestionBand(0.8 + 1e-9);
-assert(busy.id === "busy" && congestionBand(0.95).id === "busy" && busy.acquisitionMod === 0.9 && busy.churnMod === 1.1 && busy.satisfactionPenaltyBps === -500 && busy.revenueEfficiency === 1, "busy band (80–95%) diverged from the doc");
-const overloaded = congestionBand(0.95 + 1e-9);
-assert(overloaded.id === "overloaded" && congestionBand(1).id === "overloaded" && overloaded.acquisitionMod === 0.7 && overloaded.churnMod === 1.35 && overloaded.satisfactionPenaltyBps === -1200 && overloaded.revenueEfficiency === 0.97, "overloaded band (95–100%) diverged from the doc");
-const rejected = congestionBand(1 + 1e-9);
-assert(rejected.id === "rejected" && rejected.acquisitionMod === 0.4 && rejected.churnMod === 1.75 && rejected.satisfactionPenaltyBps === -2000 && rejected.revenueEfficiency === 0.9, "rejected band (>100%) diverged from the doc");
+// --- (b) Progression (v02/progression.json) ---------------------------------
+assert(MAX_EMPIRE_LEVEL === 24, "v0.2 caps the empire at 24 levels");
+assert(XP_FOR_LEVEL.length === 24, "XP table must cover 24 levels");
+let unlockSum = 0;
+for (let level = 1; level <= 24; level++) unlockSum += progressionRow(level).unlocksThisLevel;
+assert(unlockSum === 50, `unlock counts must sum to the 50-building catalog, got ${unlockSum}`);
+assert(cumulativeBuildings(1) === 2, "level 1 unlocks 2 buildings");
+assert(cumulativeBuildings(4) === 10, "level 4 unlocks 10 buildings");
+assert(cumulativeBuildings(12) === 30, "level 12 unlocks 30 buildings");
+assert(cumulativeBuildings(24) === 50, "level 24 unlocks all 50 buildings");
+const expectedMaxHexes = [1, 2, 4, 6, 8, 11, 14, 18, 22, 26, 30, 35];
+for (let level = 1; level <= 24; level++) {
+  const expected = level <= 12 ? expectedMaxHexes[level - 1]! : 35;
+  assert(maxHexesForLevel(level) === expected, `maxHexesForLevel(${level}) must be ${expected}, got ${maxHexesForLevel(level)}`);
+}
+assert(rankForLevel(4) === "humble" && rankForLevel(5) === "starter" && rankForLevel(12) === "growing"
+  && rankForLevel(16) === "established" && rankForLevel(20) === "elite" && rankForLevel(24) === "tycoon",
+  "rank bands must be 1-4 humble / 5-8 starter / 9-12 growing / 13-16 established / 17-20 elite / 21-24 tycoon");
+assert(levelForXp(0) === 1, "0 XP is level 1");
+assert(levelForXp(250) === 2, "250 XP (first v1.0 threshold) is level 2");
+assert(levelForXp(249) === 1, "249 XP is still level 1");
+assert(levelForXp(650) === 3, "650 XP is level 3");
+assert(levelForXp(173000) === 24, "173000 XP (last v1.0 threshold) is level 24");
+assert(levelForXp(173001) === 24, "XP past the table still clamps to level 24");
+for (let index = 1; index < XP_FOR_LEVEL.length; index++) {
+  assert(XP_FOR_LEVEL[index]! > XP_FOR_LEVEL[index - 1]!, `XP threshold ${index + 1} is not monotonic`);
+}
 
-// 30-day Cash Kiosk ramp (Acquisition & Retention sheet). The published table
-// is a once-per-day recursion with no congestion multiplier (verified: day-2
-// churn equals opening × 0.018 × 1.0), so the exact-number reproduction steps
-// daily (subSteps: 1); stepCustomers' 96-step mode is intra-day smoothing and
-// must converge to the same steady state.
-{
-  const kioskMod = reputationModifier(55) * serviceModifier(58);
-  const targets = { ...emptyCustomerState(), generalConsumers: 52 };
-  const acquisitionPerDay = { ...emptyCustomerState(), generalConsumers: 0.35 };
-  const churnPerDay = { ...emptyCustomerState(), generalConsumers: 0.018 };
-  const docTable: Record<number, number> = { 1: 52, 2: 51.064, 3: 50.500189168000006, 4: 50.160570947614815, 5: 49.95599783714715, 10: 49.670675931455385, 30: 49.64610119378994 };
-  let state = emptyCustomerState();
-  for (let day = 1; day <= 30; day++) {
-    state = stepCustomers(state, {
-      targets,
-      acquisitionPerDay,
-      churnPerDay,
-      demandModifiers: { generalConsumers: kioskMod },
-      boostMultiplier: day === 1 ? NEW_PLAYER_ACQUISITION_BOOST : 1,
-      subSteps: 1,
-    }).state;
-    if (docTable[day] !== undefined) approx(state.generalConsumers, docTable[day]!, 1e-6, `kiosk ramp day ${day} diverged from the doc table`);
+// --- (b2) Empire progression v1.0 (v02/progression_v10.json, canonical) ------
+// Promotion gates: five rank-entry gates, all allRequired, 300 XP reward each.
+assert(PROMOTION_GATES.length === 5, `v1.0 defines exactly 5 promotion gates, got ${PROMOTION_GATES.length}`);
+const EXPECTED_GATES = [
+  { promotionTo: "Starter", requiredLevel: 5, xpThreshold: 2000, minOwnedHexes: 6, minBuiltBusinesses: 6, minStage2Plus: 2, uniqueStocks: 3 },
+  { promotionTo: "Growing", requiredLevel: 9, xpThreshold: 8200, minOwnedHexes: 18, minBuiltBusinesses: 14, minStage2Plus: 5, uniqueStocks: 6 },
+  { promotionTo: "Established", requiredLevel: 13, xpThreshold: 22400, minOwnedHexes: 26, minBuiltBusinesses: 22, minStage2Plus: 8, uniqueStocks: 10 },
+  { promotionTo: "Elite", requiredLevel: 17, xpThreshold: 50800, minOwnedHexes: 30, minBuiltBusinesses: 30, minStage2Plus: 12, uniqueStocks: 14 },
+  { promotionTo: "Tycoon", requiredLevel: 21, xpThreshold: 105000, minOwnedHexes: 32, minBuiltBusinesses: 38, minStage2Plus: 18, uniqueStocks: 18 },
+] as const;
+for (let index = 0; index < EXPECTED_GATES.length; index++) {
+  const gate = PROMOTION_GATES[index]!;
+  const expected = EXPECTED_GATES[index]!;
+  assert(gate.promotionTo === expected.promotionTo && gate.requiredLevel === expected.requiredLevel
+    && gate.xpThreshold === expected.xpThreshold && gate.minOwnedHexes === expected.minOwnedHexes
+    && gate.minBuiltBusinesses === expected.minBuiltBusinesses && gate.minStage2Plus === expected.minStage2Plus
+    && gate.uniqueStocks === expected.uniqueStocks,
+    `gate ${index} diverged from the v1.0 table: ${JSON.stringify(gate)}`);
+  assert(gate.allRequired === true && gate.rewardXp === 300, `gate ${gate.promotionTo} must be allRequired with a 300 XP reward`);
+}
+assert(promotionGateForLevel(5)?.promotionTo === "Starter", "level 5 must gate on Starter");
+assert(promotionGateForLevel(9)?.promotionTo === "Growing", "level 9 must gate on Growing");
+assert(promotionGateForLevel(13)?.promotionTo === "Established", "level 13 must gate on Established");
+assert(promotionGateForLevel(17)?.promotionTo === "Elite", "level 17 must gate on Elite");
+assert(promotionGateForLevel(21)?.promotionTo === "Tycoon", "level 21 must gate on Tycoon");
+assert(promotionGateForLevel(6) === null && promotionGateForLevel(24) === null, "non-gate levels must not resolve a gate");
+// Workbook simulator example, exact: xp 8450, 16 hexes, 14 businesses,
+// 5 stage2+, 6 stocks, no promotions → candidate 9, displayed 8 (Growing gate
+// at 9 unmet), Starter gate (at 5) passes because its requirements are met.
+const workbookEval = evaluateProgression({
+  xp: 8450,
+  ownedHexes: 16,
+  builtBusinesses: 14,
+  stage2PlusBuildings: 5,
+  uniqueStocks: 6,
+  completedPromotions: [],
+});
+assert(workbookEval.candidateLevel === 9, `workbook candidate level must be 9, got ${workbookEval.candidateLevel}`);
+assert(workbookEval.displayedLevel === 8, `workbook displayed level must be 8, got ${workbookEval.displayedLevel}`);
+assert(workbookEval.activeGate !== null, "workbook example must surface an active gate");
+assert(workbookEval.activeGate!.promotionTo === "Growing" && workbookEval.activeGate!.requiredLevel === 9,
+  `workbook active gate must be Growing@9, got ${JSON.stringify(workbookEval.activeGate)}`);
+assert(workbookEval.activeGate!.met === false, "workbook Growing gate must be unmet");
+assert(JSON.stringify(workbookEval.activeGate!.requirements) === JSON.stringify({ ownedHexes: 18, builtBusinesses: 14, stage2PlusBuildings: 5, uniqueStocks: 6 }),
+  `workbook gate requirements diverged: ${JSON.stringify(workbookEval.activeGate!.requirements)}`);
+assert(JSON.stringify(workbookEval.activeGate!.progress.ownedHexes) === JSON.stringify({ current: 16, required: 18 }),
+  "workbook ownedHexes progress must be 16/18");
+assert(JSON.stringify(workbookEval.activeGate!.progress.builtBusinesses) === JSON.stringify({ current: 14, required: 14 }),
+  "workbook builtBusinesses progress must be 14/14");
+assert(JSON.stringify(workbookEval.activeGate!.progress.stage2PlusBuildings) === JSON.stringify({ current: 5, required: 5 }),
+  "workbook stage2PlusBuildings progress must be 5/5");
+assert(JSON.stringify(workbookEval.activeGate!.progress.uniqueStocks) === JSON.stringify({ current: 6, required: 6 }),
+  "workbook uniqueStocks progress must be 6/6");
+// Auto-promotion semantics: a met-but-unpersisted gate surfaces in
+// justPromoted; once persisted it drops out and the displayed level advances.
+assert(JSON.stringify(workbookEval.justPromoted) === JSON.stringify(["Starter"]), "workbook example must auto-promote Starter");
+const starterPersisted = evaluateProgression({ xp: 8450, ownedHexes: 16, builtBusinesses: 14, stage2PlusBuildings: 5, uniqueStocks: 6, completedPromotions: ["Starter"] });
+assert(starterPersisted.justPromoted.length === 0 && starterPersisted.displayedLevel === 8,
+  "persisted Starter must leave Growing capping the display at 8");
+const growingMet = evaluateProgression({ xp: 8450, ownedHexes: 18, builtBusinesses: 14, stage2PlusBuildings: 5, uniqueStocks: 6, completedPromotions: ["Starter"] });
+assert(growingMet.displayedLevel === 9 && JSON.stringify(growingMet.justPromoted) === JSON.stringify(["Growing"]) && growingMet.activeGate === null,
+  "meeting the Growing gate must display level 9 with no further active gate");
+// Rank / land-grade XP multiplier tables (exact).
+assert(JSON.stringify(RANK_XP_MULTIPLIER) === JSON.stringify({ Humble: 1, Starter: 1.4, Growing: 1.9, Established: 2.6, Elite: 3.5, Tycoon: 4.75 }),
+  `rank multiplier table diverged: ${JSON.stringify(RANK_XP_MULTIPLIER)}`);
+assert(JSON.stringify(LAND_GRADE_XP_MULTIPLIER) === JSON.stringify({ Entry: 1, Growth: 1.2, Premium: 1.5, Prime: 2, Trophy: 3 }),
+  `land-grade multiplier table diverged: ${JSON.stringify(LAND_GRADE_XP_MULTIPLIER)}`);
+assert(rankXpMultiplier("tycoon") === 4.75 && rankXpMultiplier("Humble") === 1 && rankXpMultiplier(undefined) === 1 && rankXpMultiplier("???") === 1,
+  "rankXpMultiplier must be case-insensitive and default to 1 (Humble)");
+assert(landGradeXpMultiplier("Trophy") === 3 && landGradeXpMultiplier("entry") === 1 && landGradeXpMultiplier(null) === 1,
+  "landGradeXpMultiplier must be case-insensitive and default to 1 (Entry)");
+// Hard daily XP caps (UTC day) and the ten canonical XP source base amounts.
+assert(JSON.stringify(DAILY_XP_CAPS) === JSON.stringify({ dailyObjectiveXp: 75, dailyMarketHuntXp: 60 }),
+  `daily XP caps diverged: ${JSON.stringify(DAILY_XP_CAPS)}`);
+assert(JSON.stringify(XP_SOURCE_BASE) === JSON.stringify({
+  construction: 100, stage2Upgrade: 50, stage3Upgrade: 100, land: 75, stockDiscovery: 40,
+  stockSet: 250, revenueMilestone: 100, dailyObjective: 25, hunt: 20, promotion: 300,
+}), `XP source base amounts diverged: ${JSON.stringify(XP_SOURCE_BASE)}`);
+assert(REVENUE_MILESTONE_THRESHOLDS_MINOR.length === 5
+  && REVENUE_MILESTONE_THRESHOLDS_MINOR[0] === 1_000 && REVENUE_MILESTONE_THRESHOLDS_MINOR[4] === 10_000_000,
+  "revenue milestone tiers must span 1k..10M minor");
+
+// --- (c) Land (v02/hex_balance.json + v02/land_prices.json) -----------------
+assert(HEX_COUNT === 35, "the canonical layout must hold exactly 35 hexes");
+assert(LAND_ACQUISITION_ORDER.length === 35, "the acquisition schedule must hold 35 parcels");
+assert(new Set(LAND_ACQUISITION_ORDER).size === 35, "acquisition order must be unique");
+const gradeCounts: Record<HexGrade, number> = { Entry: 0, Growth: 0, Premium: 0, Prime: 0, Trophy: 0 };
+for (const hex of HEXES) {
+  const attr = hexAttribute(hex.id);
+  assert(attr, `hex ${hex.id} must carry a v0.2 balance row`);
+  gradeCounts[attr.grade] += 1;
+}
+// Distribution verified from hex_balance.json (Entry 6 / Growth 7 / Premium 12 / Prime 9 / Trophy 1).
+assert(gradeCounts.Entry === 6 && gradeCounts.Growth === 7 && gradeCounts.Premium === 12
+  && gradeCounts.Prime === 9 && gradeCounts.Trophy === 1,
+  `grade distribution diverged from the workbook: ${JSON.stringify(gradeCounts)}`);
+// LVI attribute weights per category sum to ~1 (v02/affinities.json).
+for (const row of affinities as { category: string; commerceW: number; footfallW: number; roadW: number; prestigeW: number; capitalW: number; dataW: number; securityW: number; amenityW: number }[]) {
+  const sum = row.commerceW + row.footfallW + row.roadW + row.prestigeW + row.capitalW + row.dataW + row.securityW + row.amenityW;
+  approx(sum, 1, 0.02, `${row.category} LVI weights must sum to 1`);
+}
+const a04 = landPrice("A04");
+assert(a04 && a04.grade === "Trophy" && a04.cost === 247_800 && a04.requiredLevel === 12,
+  `A04 must be {Trophy, 247800, requiredLevel 12}, got ${JSON.stringify(a04)}`);
+assert(hexAttribute(hexForParcel("A04")!)!.rareRequiredLevel === 12, "A04 trophy rare gate must require level 12");
+for (const parcelId of LAND_ACQUISITION_ORDER) {
+  const price = landPrice(parcelId);
+  assert(price, `missing land price row for ${parcelId}`);
+  const attr = hexAttribute(price.hexId);
+  assert(attr && attr.parcelId === parcelId, `parcel ${parcelId} must resolve back to its hex attribute`);
+}
+// Orders 1-6 are the free bootstrap parcels (1 starter grant + 5 frontier deeds).
+for (let order = 1; order <= 6; order++) {
+  const price = LAND_ACQUISITION_ORDER.map((parcelId) => landPrice(parcelId)!).find((row) => row.order === order)!;
+  assert(price.cost === 0, `order ${order} parcel ${price.parcelId} must be free, got ${price.cost}`);
+}
+assert(landPrice(LAND_ACQUISITION_ORDER[0]!)!.method === "Starter Grant", "order 1 must be the starter grant");
+assert(STARTER_HEX_ID === "35", `starter hex must be 35 (parcel D05), got ${STARTER_HEX_ID}`);
+const starterFrontier = frontierHexIds([STARTER_HEX_ID]);
+assert(starterFrontier.length > 0, "the starter parcel must expose a non-empty frontier");
+// canAcquire cases: fresh level-1 starter OK; trophy level-gated; capacity-gated at maxHexes.
+assert(canAcquire(1, 0, [], STARTER_HEX_ID).ok, "a fresh level-1 player must acquire the starter parcel");
+assert(canAcquire(1, 0, [], "33").reason === "level", "a level-1 fresh player must be level-gated off the D04 deed");
+const a04Hex = hexForParcel("A04")!;
+assert(canAcquire(11, 5, [STARTER_HEX_ID], a04Hex).reason === "level", "A04 must be level-gated below 12");
+assert(canAcquire(1, 1, [STARTER_HEX_ID], starterFrontier[0]!).reason === "capacity", "acquisition past maxHexesForLevel must report capacity");
+
+// --- (d) Placement fit (v02/affinities.json × hex_balance.json) --------------
+const fit = placementFitMultiplier("Retail Finance", STARTER_HEX_ID);
+assert(fit === 1.00232, `kiosk on D05 fit must be exactly 1.00232, got ${fit}`);
+const categories = [...new Set(BUILDING_LIST.map((spec) => spec.category))];
+assert(categories.length === 11, `workbook defines 11 building categories, got ${categories.length}`);
+for (const category of categories) {
+  for (const hex of HEXES) {
+    const value = placementFitMultiplier(category, hex.id);
+    assert(value >= PLACEMENT_FIT_MIN && value <= PLACEMENT_FIT_MAX,
+      `fit ${category}@${hex.id} = ${value} left [${PLACEMENT_FIT_MIN}, ${PLACEMENT_FIT_MAX}]`);
   }
-  let smooth = emptyCustomerState();
-  for (let day = 1; day <= 30; day++) {
-    smooth = stepCustomers(smooth, {
-      targets,
-      acquisitionPerDay,
-      churnPerDay,
-      demandModifiers: { generalConsumers: kioskMod },
-      boostMultiplier: day === 1 ? NEW_PLAYER_ACQUISITION_BOOST : 1,
-      subSteps: 96,
-    }).state;
-  }
-  approx(smooth.generalConsumers, docTable[30]!, 0.05, "15-min sub-stepped kiosk ramp did not converge to the doc steady state");
-  approx(newPlayerBoostMultiplier(1000, 999), NEW_PLAYER_ACQUISITION_BOOST, 0, "new-player boost not active inside the 24h window");
-  assert(newPlayerBoostMultiplier(1000, 1000) === 1 && newPlayerBoostMultiplier(1000, 2000) === 1, "new-player boost leaked outside the 24h window");
 }
+// Prime (A01) must fit at least as well as Entry (C07) for most categories.
+const a01Hex = hexForParcel("A01")!;
+const c07Hex = hexForParcel("C07")!;
+assert(hexAttribute(a01Hex)!.grade === "Prime" && hexAttribute(c07Hex)!.grade === "Entry", "A01/C07 fixture grades diverged");
+let primeAtLeastEntry = 0;
+for (const category of categories) {
+  if (placementFitMultiplier(category, a01Hex) >= placementFitMultiplier(category, c07Hex)) primeAtLeastEntry += 1;
+}
+assert(primeAtLeastEntry >= categories.length - 1, `prime must fit >= entry for nearly all categories (${primeAtLeastEntry}/${categories.length})`);
 
-// Humble 5-building scenario (Stage Scenarios sheet): 240.40 total customers.
-{
-  const scenario: [string, number][] = [
-    ["cash_kiosk", 48.32249400000001],
-    ["trading_booth", 42.60189168000001],
-    ["savings_stand", 62.750907360000014],
-    ["mini_brokerage", 50.91921792000001],
-    ["market_info", 35.80745616000001],
-  ];
-  let total = 0;
-  for (const [buildingId, expected] of scenario) {
-    const spec = CARDS[buildingId]!;
-    const customers = buildingTargetCustomers({
-      category: moduleBuildingFamily(buildingId) as BuildingCategory,
-      stage: "humble",
-      captureCoeff: 0.04,
-      attractionMult: spec.attractionMult,
-      reputation: 55,
-      serviceQuality: 58,
-    });
-    approx(customers, expected, 1e-6, `${buildingId} expected customers diverged from the doc scenario`);
-    approx(spec.lv1Capacity, { cash_kiosk: 60, trading_booth: 71, savings_stand: 85, mini_brokerage: 101, market_info: 120 }[buildingId]!, 0, `${buildingId} lv1Capacity diverged from the doc`);
-    total += customers;
-  }
-  approx(total, 240.40196712000005, 1e-6, "Humble 5-building scenario diverged from the doc (240.40 customers)");
-  approx(total / 437, 0.550118917894737, 1e-9, "Humble 5-building utilization diverged from the doc (0.5501)");
-  // Weighted Stage Demand sanity: Cash Services pool on a Humble board.
-  const demand = addressableDemand("Cash Services", "humble");
-  approx(demand.generalConsumers + demand.retailInvestors + demand.activeTraders + demand.smallBusinesses + demand.corporateClients + demand.highNetWorth + demand.institutional, 1237.5, 1e-9, "Cash Services weighted demand diverged from the doc");
-}
-
-// Maturation flows (Customer Flow sheet): reclassify only, never create.
-{
-  const state = { generalConsumers: 1000, retailInvestors: 500, activeTraders: 0, smallBusinesses: 200, corporateClients: 0, highNetWorth: 100, institutional: 0 };
-  const withBrokerage = applyMaturation(state, { hasBrokerageOrFund: true, satisfactionPositive: true });
-  approx(withBrokerage.state.retailInvestors, 500 + 1000 * 0.004, 1e-9, "saver→investor flow diverged from the doc");
-  assert(totalCustomers(withBrokerage.state) === totalCustomers(state), "maturation created or destroyed customers");
-  const withoutBrokerage = applyMaturation(state, { hasBrokerageOrFund: false });
-  assert(withoutBrokerage.state.retailInvestors === 500, "maturation ran without its required building");
-  assert(MATURATION_FLOWS.length === 6, "doc defines exactly 6 maturation flows");
-}
-
-// Events sheet: 12 families, bounded doc modifiers, positive durations.
-assert(ECONOMIC_EVENTS.length === 12 && EVENT_CATALOG.length === 12 && DISTRICT_EVENTS.length === 12, "event catalog must hold exactly the 12 economic families");
-for (const event of ECONOMIC_EVENTS) {
-  assert(event.durationHours > 0, `${event.id} has a non-positive duration`);
-  for (const value of Object.values(event.segmentDemand)) assert(value >= 0.7 && value <= 1.5, `${event.id} segment demand multiplier ${value} left the doc's 0.7–1.5 band`);
-  assert(event.revenueMod >= 0.85 && event.revenueMod <= 1.15, `${event.id} revenue modifier ${event.revenueMod} diverged from the doc band`);
-  assert(event.activityMod >= 0.9 && event.activityMod <= 1.3, `${event.id} activity modifier ${event.activityMod} diverged from the doc band`);
-  // Doc note: Bank Run riskMod is 1.60 — the doc is canonical, so the risk band is 0.95–1.60.
-  assert(event.riskMod >= 0.95 && event.riskMod <= 1.6, `${event.id} risk modifier ${event.riskMod} diverged from the doc band`);
-  const catalog = EVENT_CATALOG.find((candidate) => candidate.id === event.id);
-  assert(catalog && catalog.durationHours === event.durationHours, `${event.id} catalog duration diverged from the Events sheet`);
-  assert(EVENT_MODULE_INTERACTIONS[event.id] !== undefined, `${event.id} missing its module interaction mapping`);
-  assert(EVENT_DECISIONS.some((decision) => decision.eventId === event.id), `${event.id} has no decision`);
-  assert(catalog && EVENT_MISSIONS.some((mission) => mission.eventFamily === catalog.category), `${event.id} category ${catalog?.category} has no mission`);
-}
-{
-  const families = new Set(ECONOMIC_EVENTS.map((event) => event.id));
-  for (const decision of EVENT_DECISIONS) assert(families.has(decision.eventId as typeof ECONOMIC_EVENTS[number]["id"]), `decision ${decision.id} references a retired event`);
-  const missionFamilies = new Set(EVENT_MISSIONS.map((mission) => mission.eventFamily));
-  for (const category of ["Market", "Sector", "Macro", "Corporate", "Risk/Crisis"]) assert(missionFamilies.has(category), `no mission authored for the ${category} category`);
-  assert(EVENT_DECISIONS.length === 18, "decision catalog should keep the 18-decision shape");
-  assert(EVENT_MISSIONS.length >= 12, "each family needs at least one mission");
-}
-
-// Daily district event: deterministic, drawn from the 12 families.
-assert(eventForDay("2026-09-25", "balance-regression").id === eventForDay("2026-09-25", "balance-regression").id, "eventForDay is not deterministic for a fixed (day, playerId)");
-{
-  const ids = new Set(DISTRICT_EVENTS.map((event) => event.id));
-  for (const day of ["2026-01-01", "2026-02-14", "2026-06-30", "2026-09-25", "2026-12-31"]) {
-    for (const player of ["a", "b", "balance-regression"]) assert(ids.has(eventForDay(day, player).id), "eventForDay returned an event outside the 12 families");
-  }
-}
-
-// --- Doc Model Checks (Customer & Economic Simulation v0.1, Model Checks sheet) ---
-// Every building baseline net-positive on a quiet day at its own stage, and
-// base churn bounded under 5%/day.
+// --- (e) Settle smoke: 1-card kiosk board on the starter hex -----------------
 {
   const quiet = { id: "quiet_day", title: "Quiet day", description: "", activityBps: 10_000, populationBps: 10_000, riskDeltaBps: 0 };
-  let failures = 0;
-  for (const spec of BUILDING_LIST) {
-    // Operate the building at stage 3 on a board that reaches the Tycoon band
-    // (empire level = Σ 1 + stage−1, clamped to 50): 46 stage-3 humble kiosks
-    // lift the level; same-category competition only affects the kiosks, and
-    // their upkeep is the humble-era teaching exemption.
-    const board: PlacedCard[] = [{ id: "solo", type: spec.id, x: 0, y: 0, stage: 3 }];
-    for (let i = 0; i < 46; i++) board.push({ id: `fill-${i}`, type: "cash_kiosk", x: 4 + (i % 8), y: Math.floor(i / 8), stage: 3 });
-    let segments: import("@plotgo/game").CustomerSegments | undefined;
-    let net = 0;
-    for (let day = 0; day < 3; day++) {
-      const settled = settleDistrict(board, quiet, "walk", { cashMinor: 1_000_000_000, reputationBps: 5_000, conditionBps: 10_000 }, day + 11, {}, {}, segments, false);
-      segments = settled.segments;
-      net += settled.cashDeltaMinor;
-    }
-    if (!(net > 0)) { failures += 1; console.error(`  net-nonpositive over 3 days: ${spec.id} -> ${net}`); }
-    if (!(segments && totalCustomers(segments) > 0)) { failures += 1; console.error(`  no customers served: ${spec.id}`); }
-  }
-  assert(failures === 0, `${failures} buildings failed the doc net-positive check at the tycoon band`);
-  const maxBaseChurn = Math.max(...CUSTOMER_SEGMENTS.map((segment) => segment.churnPerDay));
-  assert(maxBaseChurn < 0.05, `max base churn ${maxBaseChurn} must stay under the doc 5% bound`);
+  const settled = settleDistrict(
+    [{ id: "smoke-kiosk", type: "cash_kiosk", hexId: STARTER_HEX_ID, stage: 1 }],
+    quiet, "walk", { cashMinor: 1_000_000, reputationBps: 5_000, conditionBps: 10_000 }, 7,
+  );
+  assert(Number.isFinite(settled.cashDeltaMinor), "settle cash delta must be finite");
+  assert(settled.riskBps >= 0 && settled.riskBps <= 9_500, `risk ${settled.riskBps} left [0, 9500]`);
+  assert(settled.capacity >= settled.population && settled.population > 0,
+    `population/capacity sanity failed: population=${settled.population} capacity=${settled.capacity}`);
+  assert(settled.lines.length > 0, "settle must emit receipt lines");
+  assert(settled.revenue.length === 1 && settled.revenue[0]!.amountMinor > 0, "kiosk must produce a positive revenue line");
+  const expectedPopulation = Math.round(25 * 1.00232 * segmentValueMultiplier(STARTER_HEX_ID) * 2);
+  assert(settled.population === expectedPopulation, `kiosk population projection diverged: ${settled.population} != ${expectedPopulation}`);
 }
 
-console.log(`balance regression passed: ${eras.length} eras × 3 stages, archetype thresholds, rarity/stage matrix, module caps, Phase 5 visit/invest helpers, Phase 6 retention invariants (objective cap, calendar determinism, streak, account-age difficulty), Phase 1 doc-table reproductions (modifiers, congestion bands, 30-day kiosk ramp, Humble 5-building scenario, 12 economic event families), and doc Model Checks (all buildings net-positive, churn bound)`);
+// --- (f) Retained hex geometry invariants ------------------------------------
+assert(HEXES.length === 35 && new Set(HEXES.map((hex) => hex.id)).size === 35, "35 unique hexes required");
+for (const hex of HEXES) {
+  const neighbors = hexNeighbors(hex.id);
+  assert(neighbors.length <= 6, `${hex.id} has degree ${neighbors.length} > 6`);
+  for (const neighbor of neighbors) {
+    assert(hexNeighbors(neighbor).includes(hex.id), `adjacency is not symmetric between ${hex.id} and ${neighbor}`);
+  }
+}
+assert(hexDistance(RING_ORDER[0]!, RING_ORDER[0]!) === 0, "hexDistance identity must be 0");
+for (const neighbor of hexNeighbors(RING_ORDER[0]!)) {
+  assert(hexDistance(RING_ORDER[0]!, neighbor) === 1, `hexDistance(center, ${neighbor}) must be 1`);
+}
+
+console.log(`balance regression passed: v0.2 workbook reproductions — buildings (BLD001 kiosk net 25 / s2 33.75 / s3 45 / upgrades 4375+9000 minor, BLD050 20000, BLD024 520, BLD040 2850, 50-building catalog), progression geometry (24 levels, unlocks sum 50, cumulative 2/10/30/50, maxHexes 1..35 with 35 from 12, rank bands), progression v1.0 (XP curve levelForXp 0→1 / 250→2 / 650→3 / 173000→24, 5 promotion gates exact with 300 XP rewards, evaluateProgression workbook example candidate 9/displayed 8/Growing 16/18, rank multipliers 1/1.4/1.9/2.6/3.5/4.75, grade multipliers 1/1.2/1.5/2/3, daily caps 75/60, XP sources 100/50/100/75/40/250/100/25/20/300), land (35 parcels, grades 6/7/12/9/1, LVI weights ~1, A04 Trophy 247800 @12, free orders 1-6, starter 35, frontier + canAcquire level/capacity/starter gates), placement fit (kiosk@D05 = 1.00232 exactly, all 11 categories × 35 hexes within [0.8, 1.25], prime ≥ entry ${primeAtLeastEntry}/11), settle smoke (finite cash, risk in band, capacity ≥ population > 0, receipt lines), and hex geometry (35 unique, adjacency symmetric, degree ≤ 6)`);

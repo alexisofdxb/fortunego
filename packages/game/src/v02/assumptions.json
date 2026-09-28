@@ -1,0 +1,13 @@
+{
+ "Savings allocation to land": 0.7,
+ "Paid parcel start order": 7,
+ "Stage 1 output multiplier": 1,
+ "Stage 2 output multiplier": 1.35,
+ "Stage 3 output multiplier": 1.8,
+ "Stage 2 incremental payback days": 5,
+ "Stage 3 incremental payback days": 8,
+ "Base occupancy/utilization": 0.9,
+ "Min placement multiplier": 0.8,
+ "Max placement multiplier": 1.25,
+ "Trophy required-level gates": 1
+}

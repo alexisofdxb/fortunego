@@ -13,16 +13,18 @@ import {
   empireValueMinor,
   displayCash,
   EMPIRE_ARCHETYPES,
+  evaluateProgression,
+  HEXES,
   isUnlocked,
   isoWeek,
   marketEventForDay,
   marketStageForEmpireLevel,
+  maxHexesForLevel,
   moduleRewardLabel,
   normalizeCustomerSegments,
   resolvePlacement,
   resolveType,
   settleDistrict,
-  tickMinor,
   utcDay,
   type CustomerSegments,
   type PlacedCard,
@@ -46,6 +48,7 @@ import { dailyFlag } from "./daily-state";
 import { weekStartMs } from "../domains/performance/performance.service";
 import { moduleEffectsForBoard, moduleInventoryRows, moduleLoadoutSummaries, modulePartsRows, MODULE_CONFIG_VERSION, moduleEntry, pendingModuleRewards } from "../domains/modules/modules.service";
 import { currentEmpireLevel, hasTutorialCashAccessSynergy, onboardingSnapshot, recordOnboardingMilestone } from "../domains/player/onboarding.service";
+import { empireProgress, hexBoardRows, ownedLandRows } from "../domains/land/land.service";
 import { offlineSummaryRow, presenceRow, processOfflineCatchup } from "./offline";
 import { performanceSnapshot, weeklyPerformanceRow } from "../domains/performance/performance.service";
 
@@ -75,10 +78,14 @@ export type SettledPlayer = {
   board: PlacedCard[];
   marketHunts: MarketHuntSlot[];
   activeDays: string[];
-  /** Persisted per-segment customer counts (null until the first settle under the Phase 2 model). */
+  /** Persisted per-segment customer counts (legacy v0.1 column; v0.2 derives segments from the board). */
   customerSegments: CustomerSegments | null;
-  /** New-player 3× acquisition boost window end (ms epoch). */
+  /** Legacy acquisition-boost window end (ms epoch); no longer read by settle. */
   acquisitionBoostUntil: number;
+  empireLevel: number;
+  empireXp: number;
+  /** v1.0 completed promotion flags (rank names + revenue_tier entries). */
+  promotions: string[];
 };
 
 export async function settlePlayer(playerId: string): Promise<SettledPlayer | null> {
@@ -120,6 +127,9 @@ export async function settlePlayer(playerId: string): Promise<SettledPlayer | nu
     activeDays: parseDays(activeDaysRow?.activeDays),
     customerSegments: p.customerSegments == null ? null : normalizeCustomerSegments(p.customerSegments as Partial<CustomerSegments>),
     acquisitionBoostUntil: num(p.acquisitionBoostUntil),
+    empireLevel: p.empireLevel,
+    empireXp: p.empireXp,
+    promotions: Array.isArray(p.promotions) ? (p.promotions as unknown[]).filter((entry): entry is string => typeof entry === "string") : [],
   };
 }
 
@@ -168,7 +178,7 @@ const PLACEMENT_VERSIONS = {
 export function placementGeometryHash(board: PlacedCard[]): string {
   const geometry = [...board]
     .sort((a, b) => a.id.localeCompare(b.id))
-    .map((card) => [card.id, resolveType(card.type), card.x, card.y, card.orientation ?? 0].join(":"))
+    .map((card) => [card.id, resolveType(card.type), card.hexId].join(":"))
     .join("|");
   return createHash("sha256").update(geometry).digest("hex");
 }
@@ -228,6 +238,25 @@ export async function snapshot(playerId: string, moveTxId?: string) {
   const activeBoard = operatingBoard(p.board);
   const progressionLevel = await currentEmpireLevel(playerId, activeBoard);
   const stage = marketStageForEmpireLevel(progressionLevel);
+  const landRows = await ownedLandRows(playerId);
+  // v1.0 progression view: the displayed level is the persisted (gate-capped)
+  // level; the candidate level and the active gate are evaluated live.
+  const progressionEval = evaluateProgression({
+    xp: p.empireXp,
+    ownedHexes: landRows.length,
+    builtBusinesses: p.board.length,
+    stage2PlusBuildings: p.board.filter((card) => card.stage >= 2).length,
+    uniqueStocks: Object.values(map).filter((units) => units > 0).length,
+    completedPromotions: p.promotions,
+  });
+  const hexBoard = {
+    hexes: hexBoardRows(landRows),
+    ownedCount: landRows.length,
+    capacityForLevel: maxHexesForLevel(progressionLevel),
+    candidateLevel: progressionEval.candidateLevel,
+    activeGate: progressionEval.activeGate,
+    ...empireProgress(progressionLevel, p.empireXp),
+  };
   const events = await eventState(playerId, activeBoard, stage, p.createdAt);
   const activeEvent = effectiveDistrictEvent(dayData.event, marketEvent, collectionBonuses(map).customerDemandBps, events.modifiers);
   const moduleEffects = await moduleEffectsForBoard(playerId, activeBoard, [events.global.id, ...events.personalEvents.map((event) => event.id)], events.cycle.state);
@@ -243,8 +272,6 @@ export async function snapshot(playerId: string, moveTxId?: string) {
     dayData.seed,
     moduleEffects,
     archetype.effects,
-    p.customerSegments ?? undefined,
-    Date.now() < p.acquisitionBoostUntil,
   );
   const hunts = p.marketHunts.map((slot) => {
     const template = templateForSlot(slot);
@@ -337,6 +364,8 @@ export async function snapshot(playerId: string, moveTxId?: string) {
       changedAt: p.archetypeChangedAt,
     },
     empireLevel: progressionLevel,
+    empireXp: p.empireXp,
+    hexBoard,
     cards: p.board,
     catalog: BUILDING_LIST.map((spec) => ({
       ...spec,
@@ -380,7 +409,6 @@ export async function snapshot(playerId: string, moveTxId?: string) {
     operatingStreak: streakRow?.operatingStreak ?? 0,
     longestStreak: streakRow?.longestStreak ?? 0,
     notificationsUnread: await unreadNotificationCount(playerId),
-    tickMinor: tickMinor(p.board),
     event: dayData.event,
     marketEvent,
     eventState: {

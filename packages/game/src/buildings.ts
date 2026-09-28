@@ -1,4 +1,7 @@
 import { CASH_SCALE } from "./constants.ts";
+import { buildingsUnlockedAtOrBelow } from "./progression.ts";
+import v02Buildings from "./v02/buildings.json";
+import v02Progression from "./v02/progression.json";
 
 export type Era = "humble" | "starter" | "growing" | "established" | "elite" | "tycoon";
 export type Lineage =
@@ -19,93 +22,54 @@ export type Lineage =
 
 export type CardId = (typeof BUILDING_LIST)[number]["id"];
 
+/**
+ * Financial_Empire_Balancing_Model_v0.2 economics (v02/buildings.json, matched
+ * to BUILDING_LIST order: BLD001..BLD050 = catalog order). The v0.1 customer
+ * fields (lv1Capacity / grossCashPerHour / activityPtsPerHour / opCostBps /
+ * attractionMult / baseMinorPerTick / customersBase) were retired with the
+ * v0.1 customer simulation.
+ */
 export type CardSpec = {
   id: string;
   name: string;
   era: Era;
   lineage: Lineage;
+  /** Display footprint only (one card per hex since the hex migration). */
   footprint: [number, number];
   placeCostMinor: number;
-  baseMinorPerTick: number;
-  customersBase: number;
+  /** Net Cash per day at stage 1 (v0.2 Building Economics). */
+  baseNetPerDay: number;
+  /** v0.2 category (drives placement affinities, v02/affinities.json). */
+  category: string;
+  /** v0.2 primary customer segment (display). */
+  primarySegment: string;
+  /**
+   * Canonical v0.2 upgrade cost (minor units), derived per workbook:
+   * stage 2 = 0.35 × baseNetPerDay × 5, stage 3 = 0.45 × baseNetPerDay × 8,
+   * rounded to 2dp Cash then × CASH_SCALE.
+   */
+  upgradeCostMinor: (stage: 2 | 3) => number;
   /** Visit fee rate in bps, applied to the action's simulated notional. */
   rateBps: number;
   blurb: string;
   description: string;
   /** Previous building in this institution's progression line; informational only and never an unlock gate. */
   progressionFrom: string | null;
-  // --- PLOT_Customer_Economic_Simulation_v0.1 (Building Economics sheet) ---
-  /** Level-1 customer capacity (doc Building Economics). */
-  lv1Capacity: number;
-  /** Base gross Cash per hour at level 1 (doc). */
-  grossCashPerHour: number;
-  /** Base activity points per hour at level 1 (doc). */
-  activityPtsPerHour: number;
-  /** Operating cost as a share of gross, in bps (12% Humble → 17% Tycoon). */
-  opCostBps: number;
-  /** Attraction multiplier by stage (0.90 Humble → 1.35 Tycoon). */
-  attractionMult: number;
 };
 
-const C = CASH_SCALE;
-
-/**
- * Doc Building Economics calibration per building id, in BUILDING_LIST order:
- * [lv1Capacity, grossCashPerHour, activityPtsPerHour, opCostBps, attractionMult].
- * Capacity 60 → 301,962; op cost 12% → 17% by stage; attraction 0.90/0.98/1.06/1.15/1.25/1.35.
- */
-const DOC_BUILDING_ECONOMICS: Record<string, readonly [number, number, number, number, number]> = {
-  cash_kiosk: [60, 35, 6, 1200, 0.9],
-  trading_booth: [71, 50, 10, 1200, 0.9],
-  savings_stand: [85, 53, 10, 1200, 0.9],
-  mini_brokerage: [101, 67, 14, 1200, 0.9],
-  market_info: [120, 55, 12, 1200, 0.9],
-  micro_loan: [143, 94, 17, 1200, 0.9],
-  fx_stand: [170, 114, 22, 1200, 0.9],
-  insurance_desk: [203, 119, 21, 1200, 0.9],
-  advice_booth: [241, 139, 26, 1200, 0.9],
-  cash_locker: [287, 142, 26, 1200, 0.9],
-  neighborhood_shop: [342, 228, 41, 1300, 0.98],
-  small_brokerage: [407, 288, 56, 1300, 0.98],
-  local_savings: [484, 330, 58, 1300, 0.98],
-  microfinance: [576, 410, 69, 1300, 0.98],
-  trading_room: [685, 528, 99, 1300, 0.98],
-  small_research: [815, 417, 78, 1300, 0.98],
-  local_insurance: [970, 629, 99, 1300, 0.98],
-  treasury_office: [1155, 633, 104, 1300, 0.98],
-  small_fund: [1374, 1081, 173, 1300, 0.98],
-  services_hub: [1635, 1331, 216, 1300, 0.98],
-  community_bank: [1946, 1490, 234, 1400, 1.06],
-  brokerage_house: [2315, 1893, 319, 1400, 1.06],
-  advisory_firm: [2755, 1920, 298, 1400, 1.06],
-  asset_office: [3279, 2801, 413, 1400, 1.06],
-  research_center: [3902, 2304, 375, 1400, 1.06],
-  lending_center: [4643, 3994, 557, 1400, 1.06],
-  wealth_office: [5526, 4794, 630, 1400, 1.06],
-  digital_hub: [6575, 5585, 907, 1400, 1.06],
-  trading_house: [7825, 7604, 1127, 1400, 1.06],
-  private_vault: [9311, 6291, 838, 1400, 1.06],
-  regional_bank: [11081, 10181, 1330, 1500, 1.15],
-  stock_brokerage: [13186, 12978, 1820, 1500, 1.15],
-  fund_hq: [15691, 15911, 1977, 1500, 1.15],
-  insurance_hq: [18672, 16410, 1905, 1500, 1.15],
-  data_center: [22220, 17281, 2400, 1500, 1.15],
-  market_maker: [26442, 29350, 3808, 1500, 1.15],
-  private_bank: [31466, 34373, 3398, 1500, 1.15],
-  corp_treasury: [37445, 29854, 3370, 1500, 1.15],
-  securities_exchange: [44559, 54226, 6684, 1500, 1.15],
-  investment_bank: [53025, 64791, 6363, 1500, 1.15],
-  global_brokerage: [63100, 75258, 8708, 1600, 1.25],
-  major_am: [75089, 92468, 9461, 1600, 1.25],
-  inst_trading: [89356, 116815, 12867, 1600, 1.25],
-  global_wealth: [106334, 131889, 12122, 1600, 1.25],
-  exchange_tower: [126537, 176369, 18981, 1600, 1.25],
-  intl_bank: [150579, 191814, 18069, 1700, 1.35],
-  global_ib: [179189, 257058, 21503, 1700, 1.35],
-  sovereign_fund: [213235, 301842, 26868, 1700, 1.35],
-  world_exchange: [253750, 388694, 38062, 1700, 1.35],
-  empire_hq: [301962, 456881, 39859, 1700, 1.35],
+type V02Building = {
+  id: string;
+  name: string;
+  rank: string;
+  unlockLevel: number;
+  category: string;
+  baseNetPerDay: number;
+  s2cost: number;
+  s3cost: number;
+  primarySegment: string;
 };
+
+const V02 = v02Buildings as V02Building[];
 
 /**
  * Standing visit-fee rate per lineage (spec engine 3, bps on the action notional).
@@ -129,6 +93,12 @@ const LINEAGE_RATE_BPS: Record<Lineage, number> = {
   empire: 0,
 };
 
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+let catalogIndex = 0;
+
 function b(
   id: string,
   name: string,
@@ -136,99 +106,120 @@ function b(
   lineage: Lineage,
   footprint: [number, number],
   cost: number,
-  tick: number,
-  customers: number,
   blurb: string,
   description: string,
   progressionFrom: string | null,
 ): CardSpec {
-  const doc = DOC_BUILDING_ECONOMICS[id];
-  if (!doc) throw new Error(`Missing doc Building Economics calibration for ${id}`);
+  const index = catalogIndex;
+  catalogIndex += 1;
+  const v02 = V02[index];
+  if (!v02) throw new Error(`Missing v02/buildings.json entry for catalog index ${index} (${id})`);
+  if (v02.name !== name) throw new Error(`v02/buildings.json order mismatch at index ${index}: ${v02.name} !== ${name}`);
   return {
     id,
     name,
     era,
     lineage,
     footprint,
-    placeCostMinor: cost * C,
-    baseMinorPerTick: tick * C,
-    customersBase: customers,
+    placeCostMinor: cost * CASH_SCALE,
+    baseNetPerDay: v02.baseNetPerDay,
+    category: v02.category,
+    primarySegment: v02.primarySegment,
+    upgradeCostMinor: (stage) =>
+      Math.round((stage === 2 ? round2(0.35 * v02.baseNetPerDay * 5) : round2(0.45 * v02.baseNetPerDay * 8)) * CASH_SCALE),
     rateBps: LINEAGE_RATE_BPS[lineage],
     blurb,
     description,
     progressionFrom,
-    lv1Capacity: doc[0],
-    grossCashPerHour: doc[1],
-    activityPtsPerHour: doc[2],
-    opCostBps: doc[3],
-    attractionMult: doc[4],
   };
 }
 
 export const BUILDING_LIST: CardSpec[] = [
-  b("cash_kiosk", "Cash Kiosk", "humble", "bank", [1, 1], 300, 6, 40, "A stool and a cash box.", "The smallest way to take money in. One window, one line.", null),
-  b("trading_booth", "Trading Booth", "humble", "trade", [1, 1], 370, 7, 25, "A folding table for tickets.", "Hand-written tickets. Volume is tiny. The start of a pit.", null),
-  b("savings_stand", "Savings Stand", "humble", "bank", [1, 1], 460, 5, 35, "A jar with a ledger.", "Neighbors drop coins. You write names in a book.", null),
-  b("mini_brokerage", "Mini Brokerage Desk", "humble", "broker", [1, 2], 560, 8, 20, "One desk, two chairs.", "You take a few retail orders and keep a paper blotter.", null),
-  b("market_info", "Market Info Kiosk", "humble", "research", [1, 1], 60, 4, 18, "Prices on a chalkboard.", "A board of last prices. People stop, look, walk on.", null),
-  b("micro_loan", "Micro Loan Booth", "humble", "lend", [1, 1], 85, 7, 22, "Small loans, cash in hand.", "Tiny loans, daily collection. High touch, small book.", null),
-  b("fx_stand", "Currency Exchange Stand", "humble", "trade", [1, 2], 110, 8, 28, "A spread on the street.", "You buy and sell cash at a window. The spread is the living.", null),
-  b("insurance_desk", "Insurance Desk", "humble", "insure", [1, 1], 75, 5, 16, "A pad of policies.", "Handwritten cover for a stall, a cart, a family.", null),
-  b("advice_booth", "Investment Advice Booth", "humble", "wealth", [1, 1], 80, 5, 12, "Advice for a fee.", "You talk, they pay. No book yet, only a chair.", null),
-  b("cash_locker", "Secure Cash Locker", "humble", "vault", [1, 1], 70, 3, 8, "A box with a lock.", "The first vault. It holds the float and little else.", null),
+  b("cash_kiosk", "Cash Kiosk", "humble", "bank", [1, 1], 300, "A stool and a cash box.", "The smallest way to take money in. One window, one line.", null),
+  b("trading_booth", "Trading Booth", "humble", "trade", [1, 1], 370, "A folding table for tickets.", "Hand-written tickets. Volume is tiny. The start of a pit.", null),
+  b("savings_stand", "Savings Stand", "humble", "bank", [1, 1], 460, "A jar with a ledger.", "Neighbors drop coins. You write names in a book.", null),
+  b("mini_brokerage", "Mini Brokerage Desk", "humble", "broker", [1, 2], 560, "One desk, two chairs.", "You take a few retail orders and keep a paper blotter.", null),
+  b("market_info", "Market Info Kiosk", "humble", "research", [1, 1], 60, "Prices on a chalkboard.", "A board of last prices. People stop, look, walk on.", null),
+  b("micro_loan", "Micro Loan Booth", "humble", "lend", [1, 1], 85, "Small loans, cash in hand.", "Tiny loans, daily collection. High touch, small book.", null),
+  b("fx_stand", "Currency Exchange Stand", "humble", "trade", [1, 2], 110, "A spread on the street.", "You buy and sell cash at a window. The spread is the living.", null),
+  b("insurance_desk", "Insurance Desk", "humble", "insure", [1, 1], 75, "A pad of policies.", "Handwritten cover for a stall, a cart, a family.", null),
+  b("advice_booth", "Investment Advice Booth", "humble", "wealth", [1, 1], 80, "Advice for a fee.", "You talk, they pay. No book yet, only a chair.", null),
+  b("cash_locker", "Secure Cash Locker", "humble", "vault", [1, 1], 70, "A box with a lock.", "The first vault. It holds the float and little else.", null),
 
-  b("neighborhood_shop", "Neighborhood Finance Shop", "starter", "bank", [2, 2], 400, 18, 90, "A real shopfront.", "The kiosk grew walls. Deposits and bills under one roof.", "cash_kiosk"),
-  b("small_brokerage", "Small Brokerage Office", "starter", "broker", [2, 2], 450, 20, 50, "A two-room office.", "A blotter, a clerk, a phone. Orders leave the street.", "mini_brokerage"),
-  b("local_savings", "Local Savings Office", "starter", "bank", [2, 2], 380, 16, 80, "Passbooks and a counter.", "The stand became an office. Regulars keep passbooks here.", "savings_stand"),
-  b("microfinance", "Microfinance Office", "starter", "lend", [2, 2], 420, 19, 55, "A book of small loans.", "The booth hired a clerk. Loans are still small, now recorded.", "micro_loan"),
-  b("trading_room", "Trading Room", "starter", "trade", [2, 2], 480, 22, 45, "Screens on a wall.", "The booth got a room. A handful of tickets at once.", "trading_booth"),
-  b("small_research", "Small Research Office", "starter", "research", [1, 2], 320, 12, 22, "Two analysts, one printer.", "The chalkboard became a note. Hunt rewards tick up.", "market_info"),
-  b("local_insurance", "Local Insurance Office", "starter", "insure", [2, 2], 400, 15, 40, "A filing cabinet of policies.", "Cover for a block, not a stall.", "insurance_desk"),
-  b("treasury_office", "Treasury Office", "starter", "treasury", [2, 2], 360, 11, 15, "The Plot's till.", "Counts the district float. Neighbors run a little cleaner.", "cash_locker"),
-  b("small_fund", "Small Fund Office", "starter", "fund", [2, 2], 500, 21, 30, "A first book.", "A tiny portfolio. Stock hunts start to matter.", "advice_booth"),
-  b("services_hub", "Financial Services Hub", "starter", "digital", [2, 2], 460, 18, 70, "Many desks, one door.", "Kiosks under one roof. Foot traffic for the block.", null),
+  b("neighborhood_shop", "Neighborhood Finance Shop", "starter", "bank", [2, 2], 400, "A real shopfront.", "The kiosk grew walls. Deposits and bills under one roof.", "cash_kiosk"),
+  b("small_brokerage", "Small Brokerage Office", "starter", "broker", [2, 2], 450, "A two-room office.", "A blotter, a clerk, a phone. Orders leave the street.", "mini_brokerage"),
+  b("local_savings", "Local Savings Office", "starter", "bank", [2, 2], 380, "Passbooks and a counter.", "The stand became an office. Regulars keep passbooks here.", "savings_stand"),
+  b("microfinance", "Microfinance Office", "starter", "lend", [2, 2], 420, "A book of small loans.", "The booth hired a clerk. Loans are still small, now recorded.", "micro_loan"),
+  b("trading_room", "Trading Room", "starter", "trade", [2, 2], 480, "Screens on a wall.", "The booth got a room. A handful of tickets at once.", "trading_booth"),
+  b("small_research", "Small Research Office", "starter", "research", [1, 2], 320, "Two analysts, one printer.", "The chalkboard became a note. Hunt rewards tick up.", "market_info"),
+  b("local_insurance", "Local Insurance Office", "starter", "insure", [2, 2], 400, "A filing cabinet of policies.", "Cover for a block, not a stall.", "insurance_desk"),
+  b("treasury_office", "Treasury Office", "starter", "treasury", [2, 2], 360, "The Plot's till.", "Counts the district float. Neighbors run a little cleaner.", "cash_locker"),
+  b("small_fund", "Small Fund Office", "starter", "fund", [2, 2], 500, "A first book.", "A tiny portfolio. Stock hunts start to matter.", "advice_booth"),
+  b("services_hub", "Financial Services Hub", "starter", "digital", [2, 2], 460, "Many desks, one door.", "Kiosks under one roof. Foot traffic for the block.", null),
 
-  b("community_bank", "Community Bank Branch", "growing", "bank", [2, 2], 900, 40, 180, "A branch with a vault room.", "Deposits, loans, a manager. The shop became a bank.", "neighborhood_shop"),
-  b("brokerage_house", "Brokerage House", "growing", "broker", [2, 2], 950, 36, 90, "A house of tickets.", "Retail flow all day. Fragment drops improve.", "small_brokerage"),
-  b("advisory_firm", "Investment Advisory Firm", "growing", "wealth", [2, 2], 880, 32, 50, "Retainers, not tips.", "Advice is a practice. Clients come back.", "advice_booth"),
-  b("asset_office", "Asset Management Office", "growing", "fund", [2, 3], 1_100, 42, 55, "A proper book.", "AUM is still modest. The office has a door that closes.", "small_fund"),
-  b("research_center", "Market Research Center", "growing", "research", [2, 2], 800, 24, 35, "A floor of notes.", "Hunt rewards and intel for neighbors.", "small_research"),
-  b("lending_center", "Lending Center", "growing", "lend", [2, 2], 920, 38, 100, "A credit book.", "Loans at branch scale. Spreads pay the floor.", "microfinance"),
-  b("wealth_office", "Wealth Management Office", "growing", "wealth", [2, 2], 1_000, 34, 28, "Fewer clients, more capital.", "The advisory firm kept the rich ones.", "advisory_firm"),
-  b("digital_hub", "Digital Finance Hub", "growing", "digital", [2, 2], 860, 30, 120, "Apps on top of the shop.", "Volume without more counters.", "services_hub"),
-  b("trading_house", "Trading House", "growing", "trade", [2, 3], 1_200, 48, 80, "A real pit.", "Fees rise with how busy the Plot is.", "trading_room"),
-  b("private_vault", "Private Vault Facility", "growing", "vault", [2, 2], 700, 14, 12, "Steel, not a locker.", "Holds reserves. Boosts Cash across the board.", "cash_locker"),
+  b("community_bank", "Community Bank Branch", "growing", "bank", [2, 2], 900, "A branch with a vault room.", "Deposits, loans, a manager. The shop became a bank.", "neighborhood_shop"),
+  b("brokerage_house", "Brokerage House", "growing", "broker", [2, 2], 950, "A house of tickets.", "Retail flow all day. Fragment drops improve.", "small_brokerage"),
+  b("advisory_firm", "Investment Advisory Firm", "growing", "wealth", [2, 2], 880, "Retainers, not tips.", "Advice is a practice. Clients come back.", "advice_booth"),
+  b("asset_office", "Asset Management Office", "growing", "fund", [2, 3], 1_100, "A proper book.", "AUM is still modest. The office has a door that closes.", "small_fund"),
+  b("research_center", "Market Research Center", "growing", "research", [2, 2], 800, "A floor of notes.", "Hunt rewards and intel for neighbors.", "small_research"),
+  b("lending_center", "Lending Center", "growing", "lend", [2, 2], 920, "A credit book.", "Loans at branch scale. Spreads pay the floor.", "microfinance"),
+  b("wealth_office", "Wealth Management Office", "growing", "wealth", [2, 2], 1_000, "Fewer clients, more capital.", "The advisory firm kept the rich ones.", "advisory_firm"),
+  b("digital_hub", "Digital Finance Hub", "growing", "digital", [2, 2], 860, "Apps on top of the shop.", "Volume without more counters.", "services_hub"),
+  b("trading_house", "Trading House", "growing", "trade", [2, 3], 1_200, "A real pit.", "Fees rise with how busy the Plot is.", "trading_room"),
+  b("private_vault", "Private Vault Facility", "growing", "vault", [2, 2], 700, "Steel, not a locker.", "Holds reserves. Boosts Cash across the board.", "cash_locker"),
 
-  b("regional_bank", "Regional Bank", "established", "bank", [3, 3], 2_200, 90, 420, "A regional floor.", "Many branches' worth of deposits in one building.", "community_bank"),
-  b("stock_brokerage", "Stock Brokerage Center", "established", "broker", [3, 2], 2_000, 78, 160, "Listed flow.", "A center, not a house. Fragment chance is high.", "brokerage_house"),
-  b("fund_hq", "Investment Fund HQ", "established", "fund", [2, 3], 2_400, 88, 90, "Headquarters for the book.", "The office became an HQ. Hunts lean to stocks.", "asset_office"),
-  b("insurance_hq", "Insurance Company HQ", "established", "insure", [3, 3], 2_100, 70, 140, "A balance sheet of policies.", "Premiums at company scale.", "local_insurance"),
-  b("data_center", "Financial Data Center", "established", "research", [2, 3], 1_800, 40, 25, "Pipes, not pens.", "Does not print the most Cash. Neighbors trade better.", "research_center"),
-  b("market_maker", "Market Maker Office", "established", "trade", [2, 3], 2_300, 82, 60, "Two-sided quotes.", "Spread and inventory. Wants an exchange beside it.", "trading_house"),
-  b("private_bank", "Private Banking Center", "established", "wealth", [3, 2], 2_500, 76, 40, "Names on a card.", "Capital, not crowds.", "wealth_office"),
-  b("corp_treasury", "Corporate Treasury Center", "established", "treasury", [2, 3], 1_900, 36, 20, "The Plot's capital desk.", "Efficiency for every vault and bank nearby.", "treasury_office"),
-  b("securities_exchange", "Securities Exchange", "established", "exchange", [3, 3], 2_800, 110, 200, "A listed venue.", "Nine tiles. The board's first real exchange.", "trading_house"),
-  b("investment_bank", "Investment Bank", "established", "ib", [3, 3], 2_600, 95, 70, "Deals, not deposits.", "Earns when hunts and events fire.", "advisory_firm"),
+  b("regional_bank", "Regional Bank", "established", "bank", [3, 3], 2_200, "A regional floor.", "Many branches' worth of deposits in one building.", "community_bank"),
+  b("stock_brokerage", "Stock Brokerage Center", "established", "broker", [3, 2], 2_000, "Listed flow.", "A center, not a house. Fragment chance is high.", "brokerage_house"),
+  b("fund_hq", "Investment Fund HQ", "established", "fund", [2, 3], 2_400, "Headquarters for the book.", "The office became an HQ. Hunts lean to stocks.", "asset_office"),
+  b("insurance_hq", "Insurance Company HQ", "established", "insure", [3, 3], 2_100, "A balance sheet of policies.", "Premiums at company scale.", "local_insurance"),
+  b("data_center", "Financial Data Center", "established", "research", [2, 3], 1_800, "Pipes, not pens.", "Does not print the most Cash. Neighbors trade better.", "research_center"),
+  b("market_maker", "Market Maker Office", "established", "trade", [2, 3], 2_300, "Two-sided quotes.", "Spread and inventory. Wants an exchange beside it.", "trading_house"),
+  b("private_bank", "Private Banking Center", "established", "wealth", [3, 2], 2_500, "Names on a card.", "Capital, not crowds.", "wealth_office"),
+  b("corp_treasury", "Corporate Treasury Center", "established", "treasury", [2, 3], 1_900, "The Plot's capital desk.", "Efficiency for every vault and bank nearby.", "treasury_office"),
+  b("securities_exchange", "Securities Exchange", "established", "exchange", [3, 3], 2_800, "A listed venue.", "Nine tiles. The board's first real exchange.", "trading_house"),
+  b("investment_bank", "Investment Bank", "established", "ib", [3, 3], 2_600, "Deals, not deposits.", "Earns when hunts and events fire.", "advisory_firm"),
 
-  b("global_brokerage", "Global Brokerage Tower", "elite", "broker", [3, 3], 4_500, 160, 280, "A tower of flow.", "Retail and institutions. Fragments are common.", "stock_brokerage"),
-  b("major_am", "Major Asset Manager", "elite", "fund", [3, 3], 4_800, 170, 140, "A known book.", "AUM at elite scale.", "fund_hq"),
-  b("inst_trading", "Institutional Trading Center", "elite", "trade", [3, 3], 5_000, 185, 120, "Block flow.", "The house now speaks in size.", "market_maker"),
-  b("global_wealth", "Global Wealth Center", "elite", "wealth", [3, 3], 4_600, 155, 55, "Families, not accounts.", "The private bank went global.", "private_bank"),
-  b("exchange_tower", "Financial Exchange Tower", "elite", "exchange", [3, 3], 5_200, 200, 320, "The Plot's exchange.", "Volume is the rent.", "securities_exchange"),
+  b("global_brokerage", "Global Brokerage Tower", "elite", "broker", [3, 3], 4_500, "A tower of flow.", "Retail and institutions. Fragments are common.", "stock_brokerage"),
+  b("major_am", "Major Asset Manager", "elite", "fund", [3, 3], 4_800, "A known book.", "AUM at elite scale.", "fund_hq"),
+  b("inst_trading", "Institutional Trading Center", "elite", "trade", [3, 3], 5_000, "Block flow.", "The house now speaks in size.", "market_maker"),
+  b("global_wealth", "Global Wealth Center", "elite", "wealth", [3, 3], 4_600, "Families, not accounts.", "The private bank went global.", "private_bank"),
+  b("exchange_tower", "Financial Exchange Tower", "elite", "exchange", [3, 3], 5_200, "The Plot's exchange.", "Volume is the rent.", "securities_exchange"),
 
-  b("intl_bank", "International Bank HQ", "tycoon", "bank", [4, 4], 9_000, 280, 800, "A headquarters.", "The kiosk's last form. Sixteen tiles.", "regional_bank"),
-  b("global_ib", "Global Investment Bank", "tycoon", "ib", [4, 4], 9_500, 300, 160, "Deals at the top.", "The advisory booth's last form.", "investment_bank"),
-  b("sovereign_fund", "Sovereign Fund Tower", "tycoon", "fund", [4, 4], 10_000, 310, 200, "A tower of AUM.", "The small fund's last form.", "major_am"),
-  b("world_exchange", "World Financial Exchange", "tycoon", "exchange", [4, 4], 11_000, 340, 600, "The board's peak venue.", "The trading booth's last form.", "exchange_tower"),
-  b("empire_hq", "Financial Empire Headquarters", "tycoon", "empire", [4, 4], 12_000, 400, 500, "The Plot, named.", "Not a shop. The whole empire under one roof.", "intl_bank"),
+  b("intl_bank", "International Bank HQ", "tycoon", "bank", [4, 4], 9_000, "A headquarters.", "The kiosk's last form. Sixteen tiles.", "regional_bank"),
+  b("global_ib", "Global Investment Bank", "tycoon", "ib", [4, 4], 9_500, "Deals at the top.", "The advisory booth's last form.", "investment_bank"),
+  b("sovereign_fund", "Sovereign Fund Tower", "tycoon", "fund", [4, 4], 10_000, "A tower of AUM.", "The small fund's last form.", "major_am"),
+  b("world_exchange", "World Financial Exchange", "tycoon", "exchange", [4, 4], 11_000, "The board's peak venue.", "The trading booth's last form.", "exchange_tower"),
+  b("empire_hq", "Financial Empire Headquarters", "tycoon", "empire", [4, 4], 12_000, "The Plot, named.", "Not a shop. The whole empire under one roof.", "intl_bank"),
 ];
+
+if (BUILDING_LIST.length !== V02.length) {
+  throw new Error(`Catalog/v02 mismatch: BUILDING_LIST has ${BUILDING_LIST.length} entries, v02/buildings.json has ${V02.length}`);
+}
 
 export const CARDS: Record<string, CardSpec> = Object.fromEntries(BUILDING_LIST.map((x) => [x.id, x]));
 export const CARD_ORDER = BUILDING_LIST.map((x) => x.id);
-/** Canonical Building Card unlock level: one catalog entry per Empire Level. */
-export const CARD_UNLOCK_LEVEL: Record<string, number> = Object.fromEntries(
-  CARD_ORDER.map((id, index) => [id, index + 1]),
-);
+
+/**
+ * Canonical building unlock level under the v0.2 cumulative schedule: building
+ * catalog index i unlocks at the first level L where cumulativeBuildings(L) > i.
+ */
+// Local copy of the v0.2 cumulative unlock schedule (v02/progression.json) so
+// no progression.ts import is needed at module-init time (progression.ts
+// imports BUILDING_LIST; init-time const access would hit the TDZ cycle).
+const V02_CUMULATIVE_BUILDINGS: readonly number[] = (v02Progression as { cumulativeBuildings: number }[]).map((row) => row.cumulativeBuildings);
+
+export const CARD_UNLOCK_LEVEL: Record<string, number> = (() => {
+  const levels: Record<string, number> = {};
+  let cursor = 0;
+  for (let level = 0; level < V02_CUMULATIVE_BUILDINGS.length && cursor < BUILDING_LIST.length; level++) {
+    const target = V02_CUMULATIVE_BUILDINGS[level]!;
+    while (cursor < target && cursor < BUILDING_LIST.length) {
+      levels[BUILDING_LIST[cursor]!.id] = level + 1;
+      cursor += 1;
+    }
+  }
+  return levels;
+})();
 
 export const LEGACY_TYPE: Record<string, string> = {
   bank: "community_bank",
@@ -259,19 +250,19 @@ export function buildingUnlockLevel(type: string): number | null {
   return CARD_UNLOCK_LEVEL[id] ?? null;
 }
 
+/**
+ * v0.2 unlock rule: a building is available when the player's empire level has
+ * it inside the cumulative unlock schedule (buildingsUnlockedAtOrBelow). The
+ * legacy `placed` argument is kept for signature compatibility; unlocks are
+ * level-based now, so callers should pass the empire level via levelOverride.
+ */
 export function isUnlocked(type: string, placed: { type: string; stage: number }[], levelOverride?: number): boolean {
   const spec = CARDS[resolveType(type)];
   if (!spec) return false;
   const unlockLevel = buildingUnlockLevel(spec.id);
   if (unlockLevel === null) return false;
-  const empireLevel = levelOverride ?? Math.max(
-    1,
-    Math.min(
-      BUILDING_LIST.length,
-      placed.reduce((sum, card) => sum + Math.max(1, Math.floor(card.stage || 1)), 0),
-    ),
-  );
-  return empireLevel >= unlockLevel;
+  const empireLevel = levelOverride ?? Math.min(24, Math.max(1, placed.length)); // 24 = MAX_EMPIRE_LEVEL
+  return buildingsUnlockedAtOrBelow(empireLevel).has(spec.id);
 }
 
 export function lineageColor(lineage: Lineage): string {

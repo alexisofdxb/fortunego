@@ -261,10 +261,21 @@ export function huntProgress(
 }
 
 // Re-exported game helpers used above (kept as locals to preserve exact old logic).
-import { CARDS, cardCustomers, resolveType } from "@plotgo/game";
+import { CARDS, resolveType, stageMul } from "@plotgo/game";
 
 function CARDS_spec(card: PlacedCard) {
   return CARDS[resolveType(card.type)];
+}
+
+/**
+ * v0.2 board customer estimate: v0.1 cardCustomers is retired with the
+ * customer simulation; customers ≈ baseNetPerDay × 2 × stage multiplier
+ * (1 customer per $0.5 of net Cash/day).
+ */
+function cardCustomers(card: PlacedCard): number {
+  const spec = CARDS_spec(card);
+  if (!spec) return 0;
+  return Math.round(spec.baseNetPerDay * 2 * stageMul(card.stage));
 }
 
 function CARDS_lineage(card: PlacedCard): string {

@@ -2,6 +2,7 @@ import {
   CARDS,
   MARKET_STOCKS,
   PHASE4_INSTRUMENTS,
+  RING_ORDER,
   applyPortfolioMarks,
   collectionProgress,
   eventForDay,
@@ -32,13 +33,24 @@ export const PHASE4_TICKERS = ["NVDA", "AAPL", "TSLA", "CASH"] as const;
 export async function loadCards(playerId: string): Promise<PlacedCard[]> {
   const rows = await prisma.card.findMany({ where: { playerId } });
   const migrationPlacedAt = Date.now();
+  // Safety net (idempotent): if the hex_board migration has not run for some
+  // reason, lazily assign cards missing a hexId to the first free ring-order
+  // hexes, in placement order. Normally a no-op — hexId is NOT NULL after the
+  // migration backfilled every row.
+  const missing = rows.filter((row) => !row.hexId);
+  if (missing.length) {
+    const taken = new Set(rows.map((row) => row.hexId).filter(Boolean));
+    const free = RING_ORDER.filter((id) => !taken.has(id));
+    await Promise.all(missing.map((row, index) => free[index]
+      ? prisma.$executeRaw`UPDATE cards SET "hexId" = ${free[index]} WHERE id = ${row.id} AND "hexId" IS NULL`
+      : Promise.resolve(0)));
+    for (const [index, row] of missing.entries()) if (free[index]) row.hexId = free[index]!;
+  }
   const cards = rows.map((r) => ({
     id: r.id,
     type: resolveType(r.type),
-    x: r.x,
-    y: r.y,
+    hexId: r.hexId,
     stage: r.stage as 1 | 2 | 3,
-    orientation: (r.orientation ?? 0) as 0 | 90 | 180 | 270,
     placedAt: num(r.placedAt) || migrationPlacedAt,
     operationalUntil: num(r.operationalUntil) || 0,
   }));

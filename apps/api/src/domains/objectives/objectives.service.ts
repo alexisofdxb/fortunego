@@ -16,6 +16,7 @@ import { newId, num } from "../../shared/types";
 import { claimDailyFlag } from "../../shared/daily-state";
 import { seedMix } from "../hunts/hunts.service";
 import { recordLedger } from "../economy/ledger.service";
+import { awardDailyObjective } from "../player/empire.service";
 
 // ---------------------------------------------------------------------------
 // Daily Business Objectives (retention spec sheets 07/13/14).
@@ -223,6 +224,8 @@ async function completeObjective(playerId: string, day: string, lane: string, te
     await recordLedger(tx, playerId, day, "objective", rewardMinor, num(balance.cashMinor), { source: "objective", lane, templateId });
     paid = true;
   });
+  // v1.0: daily objective XP (25, hard-capped at 75/day).
+  if (paid) await awardDailyObjective(playerId);
   return paid;
 }
 

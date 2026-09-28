@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
-import { isoWeek } from "@plotgo/game";
+import { isoWeek, unlockedHexIds } from "@plotgo/game";
 
 // Load the repo-root .env so DATABASE_URL is available for the fixture client
 // and inherited by the spawned API server.
@@ -111,6 +111,7 @@ async function cleanupFixtures(): Promise<void> {
       // @ts-expect-error dynamic delegate access for fixture cleanup
       await tx[delegate].deleteMany({ where: { playerId: { in: playerIds } } });
     }
+    await tx.plotgoLand.deleteMany({ where: { playerId: { in: playerIds } } });
     await tx.player.deleteMany({ where: { id: { in: playerIds } } });
   });
 }
@@ -124,16 +125,31 @@ async function runAcceptance(): Promise<void> {
   await postOk("/api/session", { playerId: visitorId });
   await postOk("/api/session", { playerId: hostId });
   const now = Date.now();
-  const hostCards: { id: string; type: string; x: number; y: number }[] = [
-    { id: `visits-card-trade-${randomUUID()}`, type: "trading_booth", x: 0, y: 0 },
-    { id: `visits-card-fund-${randomUUID()}`, type: "small_fund", x: 2, y: 0 },
-    { id: `visits-card-loan-${randomUUID()}`, type: "micro_loan", x: 4, y: 0 },
-    { id: `visits-card-inv1-${randomUUID()}`, type: "savings_stand", x: 5, y: 0 },
-    { id: `visits-card-inv2-${randomUUID()}`, type: "cash_locker", x: 6, y: 0 },
-    { id: `visits-card-inv3-${randomUUID()}`, type: "market_info", x: 7, y: 0 },
+  // Seed the host board directly: one eligible building per visit action plus
+  // three invest targets, one per hex on the humble ring (hex-native board).
+  const hostHexes = unlockedHexIds("humble");
+  const hostCards: { id: string; type: string; hexId: string }[] = [
+    { id: `visits-card-trade-${randomUUID()}`, type: "trading_booth", hexId: hostHexes[0]! },
+    { id: `visits-card-fund-${randomUUID()}`, type: "small_fund", hexId: hostHexes[1]! },
+    { id: `visits-card-loan-${randomUUID()}`, type: "micro_loan", hexId: hostHexes[2]! },
+    { id: `visits-card-inv1-${randomUUID()}`, type: "savings_stand", hexId: hostHexes[3]! },
+    { id: `visits-card-inv2-${randomUUID()}`, type: "cash_locker", hexId: hostHexes[4]! },
+    { id: `visits-card-inv3-${randomUUID()}`, type: "market_info", hexId: hostHexes[5]! },
   ];
   await prisma.card.createMany({
-    data: hostCards.map((card) => ({ ...card, playerId: hostId, stage: 1, orientation: 0, placedAt: now, operationalUntil: 0 })),
+    data: hostCards.map((card) => ({ ...card, playerId: hostId, stage: 1, placedAt: now, operationalUntil: 0 })),
+  });
+  // v0.2: buildings stand on owned parcels. The fixture seeds the board
+  // directly, so grant the matching land rows the same way (one per hex).
+  await prisma.plotgoLand.createMany({
+    data: hostHexes.slice(0, hostCards.length).map((hexId, index) => ({
+      id: `visits-land-${index}-${randomUUID()}`,
+      playerId: hostId,
+      hexId,
+      method: index === 0 ? "starter_grant" : "frontier_deed",
+      priceMinor: 0,
+      acquiredAt: now,
+    })),
   });
   await prisma.player.update({ where: { id: visitorId }, data: { cashMinor: 1_000_000 } });
   const cardId = (suffix: string) => hostCards.find((card) => card.id.includes(suffix))!.id;
@@ -146,7 +162,7 @@ async function runAcceptance(): Promise<void> {
   const leaked = ["cash", "cashMinor", "ledger", "fragments", "earnedMinor", "plotBalance"].filter((key) => key in boardView);
   assert(leaked.length === 0, `board read model leaked private fields: ${leaked.join(", ")}`);
   for (const building of boardView.buildings as JsonObject[]) {
-    const extra = Object.keys(building).filter((key) => !["id", "type", "name", "x", "y", "stage", "orientation", "lineage", "color"].includes(key));
+    const extra = Object.keys(building).filter((key) => !["id", "type", "name", "hexId", "stage", "lineage", "color"].includes(key));
     assert(extra.length === 0, `board building leaked private fields: ${extra.join(", ")}`);
   }
   const missingBoard = await request(`/api/players/nobody-${randomUUID()}/board`);

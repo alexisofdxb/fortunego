@@ -2,10 +2,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import {
   CARDS,
-  NEW_PLAYER_BOOST_HOURS,
   SESSION_VERBS,
   STARTER_CASH_MINOR,
-  bootstrapCustomerSegments,
   collectionBonuses,
   marketEventForDay,
   marketStageForEmpireLevel,
@@ -28,6 +26,7 @@ import { snapshot, settlePlayer } from "../../shared/snapshot";
 import { eventState } from "../events/events.service";
 import { settleVisitEconomy } from "../economy/visits.service";
 import { produceRiskAlert } from "../notifications/notifications.service";
+import { awardRevenueMilestone } from "../player/empire.service";
 import { newId } from "../../shared/types";
 
 export const identityRoutes = new Hono<AppEnv>();
@@ -79,11 +78,10 @@ identityRoutes.post("/api/session/settle", requirePlayer, async (c) => {
   // Replay lineage (spec sheets 10/13): only attached to the ledger when a module affected the settle.
   const moduleLineage = await moduleLineageRefs(id, activeBoard, moduleEffects);
   const archetype = await archetypeResolutionForPlayer(id, activeBoard);
-  // Phase 2 customer model: carry persisted segments; lazily seed a small
-  // starting population by board affinity on the first settle (boost window
-  // already set at session create for new players).
-  const carriedSegments = p.customerSegments ?? bootstrapCustomerSegments(activeBoard);
-  const acquisitionBoost = Date.now() < p.acquisitionBoostUntil;
+  // v0.2: settleDistrict derives the customer segments from the board hexes
+  // (segmentMixForHex, default base mix on an empty board); the legacy
+  // persisted segments and the new-player acquisition boost are no longer
+  // consulted.
   let result = settleDistrict(
     activeBoard,
     activeEvent,
@@ -92,8 +90,6 @@ identityRoutes.post("/api/session/settle", requirePlayer, async (c) => {
     dayData.seed,
     moduleEffects,
     archetype.effects,
-    carriedSegments,
-    acquisitionBoost,
   );
   // First customers are guaranteed structurally by the canonical customer model
   // (doc Model Assumptions): the 24h new-player acquisition boost (3x) plus the
@@ -194,6 +190,9 @@ identityRoutes.post("/api/session/settle", requirePlayer, async (c) => {
   }
   if (result.population > 0) await recordOnboardingMilestone(id, "onboarding_first_customer", "session.settle");
   if (totalCashDeltaMinor > 0) await recordOnboardingMilestone(id, "onboarding_first_cash", "session.settle");
+  // v1.0: session settle awards no flat XP; earned_minor may cross a revenue
+  // milestone tier (100 × tier, once per tier).
+  await awardRevenueMilestone(id);
   await recordMeaningfulAction(id, `session:${body.verb}`);
   // Critical risk transition alert (spec sheet 12): risk enters the critical
   // band (>=9000 bps) from below — one notification per player per day max.

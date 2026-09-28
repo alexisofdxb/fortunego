@@ -1,0 +1,50 @@
+[
+ {
+  "type": "Commercial Tower Cluster",
+  "attributes": "Commerce, Capital, Prestige",
+  "adjacentBonus": 12,
+  "oneHexBonus": 7,
+  "twoHexBonus": 3,
+  "effects": "Demand, capital access, prestige"
+ },
+ {
+  "type": "Major Road / Junction",
+  "attributes": "Road, Footfall",
+  "adjacentBonus": 12,
+  "oneHexBonus": 6,
+  "twoHexBonus": 2,
+  "effects": "Acquisition, throughput"
+ },
+ {
+  "type": "Park / Green Amenity",
+  "attributes": "Amenity, Prestige",
+  "adjacentBonus": 12,
+  "oneHexBonus": 7,
+  "twoHexBonus": 3,
+  "effects": "Retention, premium mix"
+ },
+ {
+  "type": "Office / Business Cluster",
+  "attributes": "Commerce, Data/Talent, Capital",
+  "adjacentBonus": 10,
+  "oneHexBonus": 6,
+  "twoHexBonus": 2,
+  "effects": "Professional demand, talent, capital"
+ },
+ {
+  "type": "Financial Landmark",
+  "attributes": "Capital, Prestige, Commerce",
+  "adjacentBonus": 15,
+  "oneHexBonus": 8,
+  "twoHexBonus": 3,
+  "effects": "Institutional/HNW mix"
+ },
+ {
+  "type": "Civic / Prestige Landmark",
+  "attributes": "Prestige, Amenity",
+  "adjacentBonus": 12,
+  "oneHexBonus": 7,
+  "twoHexBonus": 3,
+  "effects": "Reputation and premium attraction"
+ }
+]

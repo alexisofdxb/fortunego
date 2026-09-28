@@ -1,0 +1,378 @@
+{
+ "levels": [
+  {
+   "level": 1,
+   "rank": "Humble",
+   "cumulativeXp": 0,
+   "xpFromPrior": 0,
+   "maxHexes": 1,
+   "cumulativeBuildings": 2,
+   "promotionGate": false
+  },
+  {
+   "level": 2,
+   "rank": "Humble",
+   "cumulativeXp": 250,
+   "xpFromPrior": 250,
+   "maxHexes": 2,
+   "cumulativeBuildings": 5,
+   "promotionGate": false
+  },
+  {
+   "level": 3,
+   "rank": "Humble",
+   "cumulativeXp": 650,
+   "xpFromPrior": 400,
+   "maxHexes": 4,
+   "cumulativeBuildings": 8,
+   "promotionGate": false
+  },
+  {
+   "level": 4,
+   "rank": "Humble",
+   "cumulativeXp": 1200,
+   "xpFromPrior": 550,
+   "maxHexes": 6,
+   "cumulativeBuildings": 10,
+   "promotionGate": false
+  },
+  {
+   "level": 5,
+   "rank": "Starter",
+   "cumulativeXp": 2000,
+   "xpFromPrior": 800,
+   "maxHexes": 8,
+   "cumulativeBuildings": 12,
+   "promotionGate": true
+  },
+  {
+   "level": 6,
+   "rank": "Starter",
+   "cumulativeXp": 3000,
+   "xpFromPrior": 1000,
+   "maxHexes": 11,
+   "cumulativeBuildings": 15,
+   "promotionGate": false
+  },
+  {
+   "level": 7,
+   "rank": "Starter",
+   "cumulativeXp": 4300,
+   "xpFromPrior": 1300,
+   "maxHexes": 14,
+   "cumulativeBuildings": 18,
+   "promotionGate": false
+  },
+  {
+   "level": 8,
+   "rank": "Starter",
+   "cumulativeXp": 6000,
+   "xpFromPrior": 1700,
+   "maxHexes": 18,
+   "cumulativeBuildings": 20,
+   "promotionGate": false
+  },
+  {
+   "level": 9,
+   "rank": "Growing",
+   "cumulativeXp": 8200,
+   "xpFromPrior": 2200,
+   "maxHexes": 22,
+   "cumulativeBuildings": 22,
+   "promotionGate": true
+  },
+  {
+   "level": 10,
+   "rank": "Growing",
+   "cumulativeXp": 10800,
+   "xpFromPrior": 2600,
+   "maxHexes": 26,
+   "cumulativeBuildings": 25,
+   "promotionGate": false
+  },
+  {
+   "level": 11,
+   "rank": "Growing",
+   "cumulativeXp": 14000,
+   "xpFromPrior": 3200,
+   "maxHexes": 30,
+   "cumulativeBuildings": 28,
+   "promotionGate": false
+  },
+  {
+   "level": 12,
+   "rank": "Growing",
+   "cumulativeXp": 17800,
+   "xpFromPrior": 3800,
+   "maxHexes": 35,
+   "cumulativeBuildings": 30,
+   "promotionGate": false
+  },
+  {
+   "level": 13,
+   "rank": "Established",
+   "cumulativeXp": 22400,
+   "xpFromPrior": 4600,
+   "maxHexes": 35,
+   "cumulativeBuildings": 32,
+   "promotionGate": true
+  },
+  {
+   "level": 14,
+   "rank": "Established",
+   "cumulativeXp": 27800,
+   "xpFromPrior": 5400,
+   "maxHexes": 35,
+   "cumulativeBuildings": 35,
+   "promotionGate": false
+  },
+  {
+   "level": 15,
+   "rank": "Established",
+   "cumulativeXp": 34200,
+   "xpFromPrior": 6400,
+   "maxHexes": 35,
+   "cumulativeBuildings": 38,
+   "promotionGate": false
+  },
+  {
+   "level": 16,
+   "rank": "Established",
+   "cumulativeXp": 41800,
+   "xpFromPrior": 7600,
+   "maxHexes": 35,
+   "cumulativeBuildings": 40,
+   "promotionGate": false
+  },
+  {
+   "level": 17,
+   "rank": "Elite",
+   "cumulativeXp": 50800,
+   "xpFromPrior": 9000,
+   "maxHexes": 35,
+   "cumulativeBuildings": 41,
+   "promotionGate": true
+  },
+  {
+   "level": 18,
+   "rank": "Elite",
+   "cumulativeXp": 61400,
+   "xpFromPrior": 10600,
+   "maxHexes": 35,
+   "cumulativeBuildings": 42,
+   "promotionGate": false
+  },
+  {
+   "level": 19,
+   "rank": "Elite",
+   "cumulativeXp": 73800,
+   "xpFromPrior": 12400,
+   "maxHexes": 35,
+   "cumulativeBuildings": 44,
+   "promotionGate": false
+  },
+  {
+   "level": 20,
+   "rank": "Elite",
+   "cumulativeXp": 88200,
+   "xpFromPrior": 14400,
+   "maxHexes": 35,
+   "cumulativeBuildings": 45,
+   "promotionGate": false
+  },
+  {
+   "level": 21,
+   "rank": "Tycoon",
+   "cumulativeXp": 105000,
+   "xpFromPrior": 16800,
+   "maxHexes": 35,
+   "cumulativeBuildings": 46,
+   "promotionGate": true
+  },
+  {
+   "level": 22,
+   "rank": "Tycoon",
+   "cumulativeXp": 124500,
+   "xpFromPrior": 19500,
+   "maxHexes": 35,
+   "cumulativeBuildings": 47,
+   "promotionGate": false
+  },
+  {
+   "level": 23,
+   "rank": "Tycoon",
+   "cumulativeXp": 147000,
+   "xpFromPrior": 22500,
+   "maxHexes": 35,
+   "cumulativeBuildings": 49,
+   "promotionGate": false
+  },
+  {
+   "level": 24,
+   "rank": "Tycoon",
+   "cumulativeXp": 173000,
+   "xpFromPrior": 26000,
+   "maxHexes": 35,
+   "cumulativeBuildings": 50,
+   "promotionGate": false
+  }
+ ],
+ "gates": [
+  {
+   "promotionTo": "Starter",
+   "requiredLevel": 5,
+   "xpThreshold": 2000,
+   "minOwnedHexes": 6,
+   "minBuiltBusinesses": 6,
+   "minStage2Plus": 2,
+   "uniqueStocks": 3,
+   "allRequired": true,
+   "rewardXp": 300
+  },
+  {
+   "promotionTo": "Growing",
+   "requiredLevel": 9,
+   "xpThreshold": 8200,
+   "minOwnedHexes": 18,
+   "minBuiltBusinesses": 14,
+   "minStage2Plus": 5,
+   "uniqueStocks": 6,
+   "allRequired": true,
+   "rewardXp": 300
+  },
+  {
+   "promotionTo": "Established",
+   "requiredLevel": 13,
+   "xpThreshold": 22400,
+   "minOwnedHexes": 26,
+   "minBuiltBusinesses": 22,
+   "minStage2Plus": 8,
+   "uniqueStocks": 10,
+   "allRequired": true,
+   "rewardXp": 300
+  },
+  {
+   "promotionTo": "Elite",
+   "requiredLevel": 17,
+   "xpThreshold": 50800,
+   "minOwnedHexes": 30,
+   "minBuiltBusinesses": 30,
+   "minStage2Plus": 12,
+   "uniqueStocks": 14,
+   "allRequired": true,
+   "rewardXp": 300
+  },
+  {
+   "promotionTo": "Tycoon",
+   "requiredLevel": 21,
+   "xpThreshold": 105000,
+   "minOwnedHexes": 32,
+   "minBuiltBusinesses": 38,
+   "minStage2Plus": 18,
+   "uniqueStocks": 18,
+   "allRequired": true,
+   "rewardXp": 300
+  }
+ ],
+ "xpSources": [
+  {
+   "source": "First-time building construction",
+   "baseXp": 100,
+   "scaling": "× building-rank multiplier",
+   "repeatable": false,
+   "cap": "Once per construction",
+   "antiExploit": "No XP for moving/replacing the same building."
+  },
+  {
+   "source": "Stage 2 building upgrade",
+   "baseXp": 50,
+   "scaling": "× building-rank multiplier",
+   "repeatable": false,
+   "cap": "Once per building",
+   "antiExploit": "Cannot be repeated by downgrade/rebuild."
+  },
+  {
+   "source": "Stage 3 building upgrade",
+   "baseXp": 100,
+   "scaling": "× building-rank multiplier",
+   "repeatable": false,
+   "cap": "Once per building",
+   "antiExploit": "Cannot be repeated by downgrade/rebuild."
+  },
+  {
+   "source": "Hex / land acquisition",
+   "baseXp": 75,
+   "scaling": "× land-grade multiplier",
+   "repeatable": false,
+   "cap": "Once per parcel",
+   "antiExploit": "Deed-granted and Cash-bought land both count once."
+  },
+  {
+   "source": "Unique stock discovered",
+   "baseXp": 40,
+   "scaling": "Flat",
+   "repeatable": false,
+   "cap": "Once per ticker",
+   "antiExploit": "Extra fragments give no discovery XP."
+  },
+  {
+   "source": "Stock collection set completed",
+   "baseXp": 250,
+   "scaling": "Flat",
+   "repeatable": false,
+   "cap": "Once per set",
+   "antiExploit": "One award per set."
+  },
+  {
+   "source": "Customer / revenue milestone",
+   "baseXp": 100,
+   "scaling": "× milestone tier",
+   "repeatable": false,
+   "cap": "Milestone-based",
+   "antiExploit": "No uncapped XP per Cash earned."
+  },
+  {
+   "source": "Daily objective",
+   "baseXp": 25,
+   "scaling": "Flat",
+   "repeatable": true,
+   "cap": "Max 3/day = 75 XP",
+   "antiExploit": "Hard daily cap."
+  },
+  {
+   "source": "Market Hunt completion",
+   "baseXp": 20,
+   "scaling": "Flat",
+   "repeatable": true,
+   "cap": "First 3/day = 60 XP",
+   "antiExploit": "Hard daily cap."
+  },
+  {
+   "source": "Rank promotion milestone",
+   "baseXp": 300,
+   "scaling": "Flat",
+   "repeatable": false,
+   "cap": "Once per promotion",
+   "antiExploit": "Cannot trigger twice."
+  }
+ ],
+ "rankMultiplier": {
+  "Humble": 1,
+  "Starter": 1.4,
+  "Growing": 1.9,
+  "Established": 2.6,
+  "Elite": 3.5,
+  "Tycoon": 4.75
+ },
+ "landGradeMultiplier": {
+  "Entry": 1,
+  "Growth": 1.2,
+  "Premium": 1.5,
+  "Prime": 2,
+  "Trophy": 3
+ },
+ "dailyCaps": {
+  "dailyObjectiveXp": 75,
+  "dailyMarketHuntXp": 60
+ }
+}

@@ -12,7 +12,9 @@ import {
   moduleLockForEvent,
   stackModifiers,
   utcDay,
-  cardCustomers,
+  CARDS,
+  resolveType,
+  stageMul,
   type CatalogEvent,
   type EventMission,
   type EventModifier,
@@ -26,6 +28,16 @@ import { newId, num } from "../../shared/types";
 import { auditEvent } from "../plot/audit.service";
 import { cycleGlobalEvent, ensureMarketCycle, stableEventSeed } from "./market-cycle.service";
 import { addEventPerformance } from "../performance/performance.service";
+
+/**
+ * v0.2 board customer estimate (retires v0.1 cardCustomers with the customer
+ * simulation): customers ≈ baseNetPerDay × 2 × stage multiplier.
+ */
+function cardCustomers(card: PlacedCard): number {
+  const spec = CARDS[resolveType(card.type)];
+  if (!spec) return 0;
+  return Math.round(spec.baseNetPerDay * 2 * stageMul(card.stage));
+}
 
 export type PlayerEventRow = {
   id: string;

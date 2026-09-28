@@ -1,41 +1,32 @@
 import { create } from "zustand";
 
-export type DragState =
-  | { kind: "place"; type: string; orientation: 0 | 90 | 180 | 270 }
-  | { kind: "move"; id: string; type: string; orientation: 0 | 90 | 180 | 270 };
-
-export type Ghost = { x: number; y: number; ok: boolean } | null;
-
 interface UiState {
   inspectId: string | null;
-  drag: DragState | null;
-  ghost: Ghost;
+  /** Place mode: a Hand card is selected, waiting for a target hex click. */
+  placeMode: { type: string } | null;
+  /** Move mode: a placed building is being relocated to a target hex click. */
+  moveMode: { cardId: string } | null;
   toast: string;
   openSections: Record<string, boolean>;
   setInspectId: (id: string | null) => void;
-  beginDrag: (drag: DragState) => void;
-  rotateDrag: () => void;
-  setGhost: (ghost: Ghost) => void;
-  endDrag: () => void;
+  setPlaceMode: (mode: { type: string } | null) => void;
+  setMoveMode: (mode: { cardId: string } | null) => void;
+  cancelBoardModes: () => void;
   setToast: (toast: string) => void;
   toggleSection: (id: string) => void;
 }
 
-export const useUiStore = create<UiState>((set, get) => ({
+export const useUiStore = create<UiState>((set) => ({
   inspectId: null,
-  drag: null,
-  ghost: null,
+  placeMode: null,
+  moveMode: null,
   toast: "",
   openSections: {},
   setInspectId: (inspectId) => set({ inspectId }),
-  beginDrag: (drag) => set({ drag, ghost: null, inspectId: null }),
-  rotateDrag: () => {
-    const drag = get().drag;
-    if (!drag) return;
-    set({ drag: { ...drag, orientation: ((drag.orientation + 90) % 360) as 0 | 90 | 180 | 270 } });
-  },
-  setGhost: (ghost) => set({ ghost }),
-  endDrag: () => set({ drag: null, ghost: null }),
+  setPlaceMode: (placeMode) => set({ placeMode, moveMode: null, inspectId: null }),
+  setMoveMode: (moveMode) => set({ moveMode, placeMode: null, inspectId: null }),
+  cancelBoardModes: () => set({ placeMode: null, moveMode: null }),
   setToast: (toast) => set({ toast }),
-  toggleSection: (id) => set({ openSections: { ...get().openSections, [id]: !get().openSections[id] } }),
+  toggleSection: (id) =>
+    set((state) => ({ openSections: { ...state.openSections, [id]: !state.openSections[id] } })),
 }));

@@ -1,24 +1,17 @@
 import { createHash } from "node:crypto";
 import {
-  CARDS,
   OFFLINE_CONFIG,
-  advanceCustomers,
-  bootstrapCustomerSegments,
-  computeCustomerPlan,
   normalizeCustomerSegments,
-  roundCustomerSegments,
-  resolveType,
   seedForDay,
   settleDistrict,
   splitOfflineWindow,
-  tickMinor,
-  totalCustomers,
   utcDay,
   isoWeek,
   marketStageForEmpireLevel,
-  empireLevel,
-  collectionBonuses,
   marketEventForDay,
+  offlineCatchUpMinor,
+  offlineNetPerHour,
+  POPULATION_PER_CASH_DAY,
   type CustomerSegments,
   type OfflineSlice,
   type PlacedCard,
@@ -28,7 +21,7 @@ import { newId, num, parseDays, parseNumberMap } from "./types";
 import { archetypeResolutionForPlayer, districtDay, effectiveDistrictEvent, loadCards, operatingBoard } from "../domains/plot/board.service";
 import { eventState } from "../domains/events/events.service";
 import { moduleEffectsForBoard } from "../domains/modules/modules.service";
-import { recordOnboardingMilestone, onboardingMilestoneRows } from "../domains/player/onboarding.service";
+import { recordOnboardingMilestone, onboardingMilestoneRows, currentEmpireLevel } from "../domains/player/onboarding.service";
 import { auditEvent } from "../domains/plot/audit.service";
 
 type PresenceRow = {
@@ -187,12 +180,6 @@ export async function offlineSummaryRow(playerId: string): Promise<OfflineSummar
   };
 }
 
-function moduleThroughputBps(board: PlacedCard[], effects: Record<string, { activityEfficiencyBps?: number; operatingCostReductionBps?: number }>, key: "activityEfficiencyBps" | "operatingCostReductionBps") {
-  const weights = board.reduce((sum, card) => sum + Math.max(1, CARDS[resolveType(card.type)]?.customersBase ?? 1), 0);
-  if (!weights) return 0;
-  return Math.round(board.reduce((sum, card) => sum + Number(effects[card.id]?.[key] ?? 0) * Math.max(1, CARDS[resolveType(card.type)]?.customersBase ?? 1), 0) / weights);
-}
-
 export async function processOfflineCatchup(playerId: string, now = Date.now()): Promise<OfflineSummary | null> {
   const row = await presenceRow(playerId);
   if (!row) return null;
@@ -214,7 +201,7 @@ export async function processOfflineCatchup(playerId: string, now = Date.now()):
     : Math.min(capUntil, firstOfflineAt + Math.floor(Math.max(0, now - firstOfflineAt) / bucketMs) * bucketMs);
   const slices = splitOfflineWindow(cursor, processedUntil, offlineStart);
   const board = operatingBoard(await loadCards(playerId));
-  const stage = marketStageForEmpireLevel(empireLevel(board));
+  const stage = marketStageForEmpireLevel(await currentEmpireLevel(playerId, board));
   const eventLayer = await eventState(playerId, board, stage, row.createdAt, now);
   const day = utcDay(now);
   const dayData = await districtDay(playerId, day);
@@ -222,6 +209,11 @@ export async function processOfflineCatchup(playerId: string, now = Date.now()):
   const activeEvent = effectiveDistrictEvent(dayData.event, marketEvent, 0, eventLayer.modifiers);
   const moduleEffects = await moduleEffectsForBoard(playerId, board, [eventLayer.global.id, ...eventLayer.personalEvents.map((event) => event.id)], eventLayer.cycle.state);
   const sessionId = row.offlineSessionId ?? newId();
+  // v0.2 offline economy: the catch-up credit is the board's expected net Cash
+  // (offlineCatchUpMinor: 0.5 efficiency, 12h cap inside), scaled per bucket
+  // by the offline band's cashEfficiency. No v0.1 customer dynamics.
+  const netPerHour = offlineNetPerHour(board);
+  const expectedCustomers = Math.round((netPerHour * 24) / POPULATION_PER_CASH_DAY);
   let state = {
     cashMinor: row.cashMinor,
     earnedMinor: row.earnedMinor,
@@ -258,33 +250,18 @@ export async function processOfflineCatchup(playerId: string, now = Date.now()):
       }],
       skipDuplicates: true,
     });
-    const ticksPerHour = 3_600_000 / 10_000;
-    const grossPerHour = tickMinor(board) * ticksPerHour;
-    const activityBps = moduleThroughputBps(board, moduleEffects, "activityEfficiencyBps");
-    const operatingCostBps = Math.max(-12_000, Math.min(12_000, moduleThroughputBps(board, moduleEffects, "operatingCostReductionBps")));
-    const eventMultiplier = Math.max(0, activeEvent.activityBps / 10_000) * Math.max(0, 1 + (activeEvent.revenueBps ?? 0) / 10_000);
-    // Phase 2 customer model: carry persisted segments through the offline window,
-    // advancing the doc day-stepped dynamics per bucket (pro-rata day fraction).
-    // Doc Offline Customer Acquisition Efficiency (0.5) × the offline band's
-    // customerIntensity; churn always applies. The 12h accrual cap is the
-    // retention-loop CANONICAL deviation from the doc's 8h (documented).
-    const customerPlan = computeCustomerPlan(board, activeEvent, { cashMinor: row.cashMinor, reputationBps: row.reputationBps, conditionBps: row.conditionBps }, moduleEffects);
-    let segments: CustomerSegments = row.customerSegments ?? bootstrapCustomerSegments(board);
-    const customerBoost = now < row.acquisitionBoostUntil;
     for (let index = 0; index < slices.length; index++) {
       const slice: OfflineSlice = slices[index]!;
       const bucketId = createHash("sha256").update(`${sessionId}:${slice.startAt}:${slice.endAt}`).digest("hex").slice(0, 32);
       const existingBucket = await tx.plotgoOfflineBucket.findUnique({ where: { bucketId } });
       if (existingBucket) continue;
       const hours = slice.durationMs / 3_600_000;
-      const settled = settleDistrict(board, activeEvent, "walk", state, seedForDay(day, `${playerId}:${bucketId}`), moduleEffects, (await archetypeResolutionForPlayer(playerId, board)).effects, segments, customerBoost);
-      const previousCustomers = totalCustomers(segments);
-      segments = advanceCustomers(customerPlan, segments, Math.min(1, hours / 24), { acquisitionScale: 0.5 * slice.customerIntensity, boost: customerBoost }).state;
-      const customerDelta = Math.round(totalCustomers(segments) - previousCustomers);
-      const signed = settled.cashDeltaMinor < 0 ? -1 : 1;
-      const normalNetPerHour = Math.round(grossPerHour * eventMultiplier * (10_000 + activityBps) / 10_000 * (10_000 - operatingCostBps) / 10_000);
-      const cashDelta = signed * Math.round(normalNetPerHour * hours * slice.cashEfficiency);
-      const nextPopulation = Math.max(0, Math.round(totalCustomers(segments)));
+      const settled = settleDistrict(board, activeEvent, "walk", state, seedForDay(day, `${playerId}:${bucketId}`), moduleEffects, (await archetypeResolutionForPlayer(playerId, board)).effects);
+      // Single v0.2 credit per bucket: expected net × band cashEfficiency.
+      const cashDelta = Math.round(offlineCatchUpMinor(board, hours) * slice.cashEfficiency);
+      // Customers are derived from the board's expected net (deterministic).
+      const nextPopulation = expectedCustomers;
+      const customerDelta = nextPopulation - state.population;
       const riskAfter = Math.max(0, Math.min(9_500, Math.round(state.riskBps + (settled.riskBps - state.riskBps) * slice.riskIntensity)));
       const reputationAfter = Math.max(0, Math.min(10_000, Math.min(state.reputationBps, settled.reputationBps)));
       const conditionAfter = Math.max(0, Math.min(10_000, Math.round(state.conditionBps + (settled.conditionBps - state.conditionBps) * slice.customerIntensity)));
@@ -335,7 +312,6 @@ export async function processOfflineCatchup(playerId: string, now = Date.now()):
         conditionBps: state.conditionBps,
         transactions: state.transactions,
         volumeMinor: state.volumeMinor,
-        customerSegments: roundCustomerSegments(segments) as object,
         offlineStartedAt: offlineStart,
         offlineProcessedUntil: processedUntil,
         lastSettleAt: processedUntil,

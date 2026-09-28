@@ -11,7 +11,9 @@ function onboardingTargetFor(id: string): string {
 }
 
 export function Hand({ plot }: { plot: PlotSnapshot }) {
-  const beginDrag = useUiStore((s) => s.beginDrag);
+  const placeMode = useUiStore((s) => s.placeMode);
+  const setPlaceMode = useUiStore((s) => s.setPlaceMode);
+  const setMoveMode = useUiStore((s) => s.setMoveMode);
   const hand = plot.catalog;
   return (
     <section className="hand">
@@ -19,15 +21,15 @@ export function Hand({ plot }: { plot: PlotSnapshot }) {
         {hand.map((card) =>
           card.unlocked ? (
             <button
-              className="play-card"
               type="button"
               key={card.id}
               data-drag-type={card.id}
               data-onboarding-target={onboardingTargetFor(card.id)}
               title={card.name}
-              onPointerDown={(e) => {
-                e.preventDefault();
-                beginDrag({ kind: "place", type: card.id, orientation: 0 });
+              className={`play-card${placeMode?.type === card.id ? " selected" : ""}`}
+              onClick={() => {
+                setMoveMode(null);
+                setPlaceMode(placeMode?.type === card.id ? null : { type: card.id });
               }}
             >
               <i></i>

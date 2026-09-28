@@ -19,6 +19,7 @@ import { claimMarketReservation, huntProgress, oraclePriceMinor, templateForSlot
 import { rerollDailyOffer, startHuntOffer } from "./offers.service";
 import { grantPendingModuleReward, moduleEffectsForBoard } from "../modules/modules.service";
 import { currentEmpireLevel, recordOnboardingMilestone } from "../player/onboarding.service";
+import { awardHunt, awardRevenueMilestone, awardStockDiscovery, awardStockSet } from "../player/empire.service";
 import { recordMeaningfulAction } from "../../shared/offline";
 import { addWeeklyHuntPerformance } from "../performance/performance.service";
 import { recordLedger } from "../economy/ledger.service";
@@ -106,6 +107,13 @@ huntRoutes.post("/api/hunt/claim", requirePlayer, async (c) => {
   });
   if (!claimResult) return c.json({ error: "Hunt already claimed" }, 409);
   await recordOnboardingMilestone(id, "onboarding_first_hunt_complete", "hunt.claim");
+  // v1.0: hunt completion XP (20, capped 60/day) + first-ticker stock discovery
+  // (40; the fragment map was loaded before the credit, so a zero/absent ticker
+  // means this claim is the fragments-row first insert) + set completion check.
+  await awardHunt(id);
+  if (slot.stockTicker && (map[slot.stockTicker] ?? 0) <= 0) await awardStockDiscovery(id, slot.stockTicker);
+  await awardStockSet(id);
+  await awardRevenueMilestone(id);
   if (slot.stockTicker) await recordOnboardingMilestone(id, "onboarding_first_stock", "stock.reward");
   await recordMeaningfulAction(id, `hunt:${slot.id}`);
   const snap = await snapshot(id);

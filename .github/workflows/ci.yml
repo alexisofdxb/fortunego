@@ -32,6 +32,12 @@ jobs:
       - name: Balance regression
         run: pnpm test:balance
 
+      - name: Land acceptance
+        run: pnpm test:land
+
+      - name: Progression v1.0 acceptance
+        run: pnpm test:progression
+
       - name: Performance simulation
         run: pnpm simulate:performance
 

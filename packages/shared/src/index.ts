@@ -10,19 +10,140 @@ import { z } from "zod";
 // Primitive helpers
 // ---------------------------------------------------------------------------
 
-const orientationSchema = z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]);
-
 export const placedCardSchema = z.object({
   id: z.string(),
   type: z.string(),
-  x: z.number(),
-  y: z.number(),
+  hexId: z.string(),
   stage: z.union([z.literal(1), z.literal(2), z.literal(3)]),
-  orientation: orientationSchema.optional(),
   placedAt: z.number().optional(),
   operationalUntil: z.number().optional(),
 });
 export type PlacedCardDto = z.infer<typeof placedCardSchema>;
+
+/** v1.0 promotion gate view (Empire_Progression_System_v1.0). */
+export const promotionGateViewSchema = z.object({
+  promotionTo: z.string(),
+  requiredLevel: z.number(),
+  requirements: z.object({
+    ownedHexes: z.number(),
+    builtBusinesses: z.number(),
+    stage2PlusBuildings: z.number(),
+    uniqueStocks: z.number(),
+  }),
+  progress: z.object({
+    ownedHexes: z.object({ current: z.number(), required: z.number() }),
+    builtBusinesses: z.object({ current: z.number(), required: z.number() }),
+    stage2PlusBuildings: z.object({ current: z.number(), required: z.number() }),
+    uniqueStocks: z.object({ current: z.number(), required: z.number() }),
+  }),
+  met: z.boolean(),
+});
+export type PromotionGateViewDto = z.infer<typeof promotionGateViewSchema>;
+
+/** v0.2 hex-board view: layout geometry + land ownership/price state. */
+export const hexBoardSchema = z.object({
+  hexes: z.array(
+    z.object({
+      hexId: z.string(),
+      parcelId: z.string().nullable(),
+      cx: z.number(),
+      cy: z.number(),
+      /** Ring band letter from the parcel id (A/B/C/D). */
+      ring: z.string().nullable(),
+      grade: z.string().nullable(),
+      lvi: z.number(),
+      owned: z.boolean(),
+      frontier: z.boolean(),
+      priceMinor: z.number(),
+      requiredLevel: z.number(),
+      acquisitionMethod: z.string().nullable(),
+    }),
+  ),
+  ownedCount: z.number(),
+  capacityForLevel: z.number(),
+  /** Displayed level (promotion-gated). */
+  empireLevel: z.number(),
+  empireXp: z.number(),
+  xpForNextLevel: z.number(),
+  /** v1.0: XP-only level (promotion gates do not cap it). */
+  candidateLevel: z.number(),
+  /** v1.0: the gate currently holding the displayed level back, if any. */
+  activeGate: promotionGateViewSchema.nullable(),
+});
+export type HexBoard = z.infer<typeof hexBoardSchema>;
+
+// ---------------------------------------------------------------------------
+// v0.2 land payloads (Phase 2)
+// ---------------------------------------------------------------------------
+
+export const landPriceSchema = z.object({
+  cost: z.number(),
+  requiredLevel: z.number(),
+  method: z.enum(["Starter Grant", "Frontier Deed", "Cash Purchase"]),
+});
+export type LandPriceDto = z.infer<typeof landPriceSchema>;
+
+export const landHexSchema = z.object({
+  hexId: z.string(),
+  parcelId: z.string().nullable(),
+  cx: z.number(),
+  cy: z.number(),
+  ring: z.string().nullable(),
+  grade: z.string().nullable(),
+  lvi: z.number(),
+  attributes: z.record(z.unknown()).nullable(),
+  owned: z.boolean(),
+  frontier: z.boolean(),
+  acquiredMethod: z.string().nullable(),
+  /** True minor units (cost x 100). */
+  priceMinor: z.number(),
+  price: landPriceSchema.nullable(),
+});
+export type LandHex = z.infer<typeof landHexSchema>;
+
+export const landResponseSchema = z.object({
+  hexes: z.array(landHexSchema),
+  ownedCount: z.number(),
+  capacityForLevel: z.number(),
+  empireLevel: z.number(),
+});
+export type LandResponse = z.infer<typeof landResponseSchema>;
+
+export const landAcquireRequestSchema = z.object({ hexId: z.string() });
+export type LandAcquireRequest = z.infer<typeof landAcquireRequestSchema>;
+
+export const landOwnershipSchema = z.object({
+  hexId: z.string(),
+  parcelId: z.string().nullable(),
+  method: z.string(),
+  priceMinor: z.number(),
+  acquiredAt: z.number(),
+});
+export type LandOwnership = z.infer<typeof landOwnershipSchema>;
+
+export const landAcquireResponseSchema = landResponseSchema.extend({
+  ownership: landOwnershipSchema,
+  replayed: z.boolean(),
+});
+export type LandAcquireResponse = z.infer<typeof landAcquireResponseSchema>;
+
+export const landFitResponseSchema = z.object({
+  hexId: z.string(),
+  type: z.string(),
+  category: z.string(),
+  multiplier: z.number(),
+  grade: z.string().nullable(),
+  clamped: z.boolean(),
+  breakdown: z.array(
+    z.object({
+      factor: z.enum(["acquisition", "premium", "efficiency", "risk"]),
+      sensitivity: z.number(),
+      mod: z.number(),
+      delta: z.number(),
+    }),
+  ),
+});
+export type LandFitResponse = z.infer<typeof landFitResponseSchema>;
 
 const moduleProfileSchema = z.object({
   buildingRarity: z.string(),
@@ -224,7 +345,8 @@ export const plotSnapshotSchema = z.object({
   stockClaimBlockedReason: z.string().nullable(),
   activeDays: z.number(),
   empireLevel: z.number(),
-  tickMinor: z.number(),
+  empireXp: z.number().optional(),
+  hexBoard: hexBoardSchema,
   cards: z.array(placedCardSchema),
   catalog: z.array(
     z.object({
@@ -583,22 +705,15 @@ export type SessionStartRequest = z.infer<typeof sessionStartSchema>;
 
 export const placeRequestSchema = z.object({
   type: z.string(),
-  x: z.number(),
-  y: z.number(),
-  orientation: orientationSchema.default(0),
+  hexId: z.string(),
 });
 export type PlaceRequest = z.infer<typeof placeRequestSchema>;
 
 export const moveRequestSchema = z.object({
   cardId: z.string(),
-  x: z.number(),
-  y: z.number(),
-  orientation: orientationSchema.default(0),
+  hexId: z.string(),
 });
 export type MoveRequest = z.infer<typeof moveRequestSchema>;
-
-export const rotateRequestSchema = z.object({ cardId: z.string(), orientation: orientationSchema });
-export type RotateRequest = z.infer<typeof rotateRequestSchema>;
 
 export const upgradeRequestSchema = z.object({ cardId: z.string() });
 export type UpgradeRequest = z.infer<typeof upgradeRequestSchema>;
@@ -752,10 +867,8 @@ export const playerBoardSchema = z.object({
       id: z.string(),
       type: z.string(),
       name: z.string(),
-      x: z.number(),
-      y: z.number(),
+      hexId: z.string(),
       stage: z.number(),
-      orientation: z.number(),
       lineage: z.string(),
       color: z.string(),
     }),

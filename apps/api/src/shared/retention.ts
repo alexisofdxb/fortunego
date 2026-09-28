@@ -7,6 +7,7 @@ import { ensurePendingWeeklySnapshot } from "../domains/settlement/settlement.se
 import { weekStartMs } from "../domains/performance/performance.service";
 import { loadCards, operatingBoard } from "../domains/plot/board.service";
 import { currentEmpireLevel } from "../domains/player/onboarding.service";
+import { resetDailyXpCounters } from "../domains/player/empire.service";
 
 // ---------------------------------------------------------------------------
 // Daily reset orchestrator (retention spec sheets 10/14).
@@ -84,6 +85,8 @@ export async function runDailyReset(now = Date.now()): Promise<{ players: number
   for (const { id } of players) {
     try {
       await finalizePlayerDay(id, yesterday, now);
+      // v1.0: roll the daily XP caps (objectives 75 / hunts 60) at the new UTC day.
+      await resetDailyXpCounters(id, today);
       await expireStaleOffers(id, today, now);
       await expireObjectives(id, today);
       await spawnDailyOffers(id, today, now);

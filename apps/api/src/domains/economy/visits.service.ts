@@ -235,10 +235,8 @@ export async function playerBoardView(playerId: string) {
         id: card.id,
         type: spec?.id ?? card.type,
         name: spec?.name ?? card.type,
-        x: card.x,
-        y: card.y,
+        hexId: card.hexId,
         stage: card.stage,
-        orientation: card.orientation ?? 0,
         lineage: spec?.lineage ?? "bank",
         color: spec ? lineageColor(spec.lineage) : "bank",
       };

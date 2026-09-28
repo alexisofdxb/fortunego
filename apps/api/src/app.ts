@@ -15,6 +15,7 @@ import { performanceRoutes } from "./domains/performance/performance.routes";
 import { leaderboardRoutes } from "./domains/performance/leaderboard.routes";
 import { settlementRoutes } from "./domains/settlement/settlement.routes";
 import { objectiveRoutes } from "./domains/objectives/objectives.routes";
+import { landRoutes } from "./domains/land/land.routes";
 import { notificationRoutes } from "./domains/notifications/notifications.routes";
 import { jobRoutes } from "./infrastructure/tasks/job.routes";
 import { ensureModuleConfig } from "./domains/modules/modules.service";
@@ -52,6 +53,7 @@ app.route("/", leaderboardRoutes);
 app.route("/", onboardingRoutes);
 app.route("/", visitRoutes);
 app.route("/", objectiveRoutes);
+app.route("/", landRoutes);
 app.route("/", notificationRoutes);
 app.route("/", jobRoutes);
 

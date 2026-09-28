@@ -57,6 +57,16 @@ model Player {
   privyUserId            String?  @unique
   operatingStreak        Int     @default(0)
   longestStreak          Int     @default(0)
+  // v1.0 empire progression (Empire_Progression_System_v1.0): XP-driven level
+  // 1..24 with promotion gates. `promotions` is a Json string array: completed
+  // promotion rank names plus "revenue_tier:N" milestone tracking entries.
+  empireLevel            Int     @default(1)
+  empireXp               Int     @default(0)
+  promotions             Json    @default("[]")
+  dailyObjectiveXp       Int     @default(0)
+  dailyHuntXp            Int     @default(0)
+  completedSetsAwarded   Int     @default(0)
+  dailyXpResetDay        String  @default("")
   // Phase 2 customer economic model: persisted per-segment customer counts
   // (nullable; lazily initialized at the first settle under the new model).
   customerSegments       Json?
@@ -64,6 +74,21 @@ model Player {
   acquisitionBoostUntil  BigInt  @default(0)
 
   @@map("players")
+}
+
+// v0.2 land ownership (Land Acquisition sheet): one row per owned parcel.
+// method: "starter_grant" | "frontier_deed" | "cash_purchase".
+model PlotgoLand {
+  id         String  @id
+  playerId   String
+  hexId      String
+  method     String
+  priceMinor BigInt  @default(0)
+  acquiredAt BigInt
+
+  @@unique([playerId, hexId])
+  @@index([playerId])
+  @@map("plotgo_land")
 }
 
 // Authoritative daily retention state (spec sheet 14: daily_player_state).
@@ -157,14 +182,13 @@ model Card {
   id              String  @id
   playerId        String
   type            String
-  x               Int
-  y               Int
+  hexId           String
   stage           Int
-  orientation     Int     @default(0)
   placedAt        BigInt  @default(0)
   operationalUntil BigInt @default(0)
 
   @@index([playerId])
+  @@index([hexId])
   @@map("cards")
 }
 

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PlotGo — Map (hex layer)</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #0a1420; overflow: hidden; }
+      #frame {
+        position: relative;
+        width: 100vw; height: 100vh;
+        aspect-ratio: 1536 / 864;
+        max-width: calc(100vh * (1536 / 864));
+        max-height: calc(100vw * (864 / 1536));
+        margin: auto;
+        top: 50%; transform: translateY(-50%);
+      }
+      #frame img, #frame svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+      #frame svg .hex { cursor: pointer; }
+      #frame svg .hex text { pointer-events: none; }
+      #hud {
+        position: fixed; left: 12px; top: 12px; z-index: 10;
+        padding: 10px 14px; border-radius: 10px;
+        font: 12px/1.5 "IBM Plex Sans", system-ui, sans-serif; color: #e8dfc8;
+        background: rgba(14, 20, 30, 0.8); border: 1px solid #2c3d5c;
+      }
+      #hud b { color: #d4a017; letter-spacing: 0.08em; text-transform: uppercase; font-size: 10px; }
+      #hud a { color: #d4a017; }
+      #frame svg .hex path { fill: #4a3b2d; fill-opacity: 0.85; stroke: #efe6d2; stroke-width: 2.5; stroke-linejoin: round; }
+      #frame svg .hex.unlocked path { fill: #3d6b46; }
+      #frame svg .hex text { display: block; fill: #efe6d2; font: 700 24px "IBM Plex Sans", sans-serif; text-anchor: middle; pointer-events: none; paint-order: stroke; stroke: rgba(30,22,14,0.85); stroke-width: 4; }
+      #frame svg .hex:hover path { fill: #5a4a38; }
+      #frame svg .hex.unlocked:hover path { fill: #4a7f55; }
+    </style>
+  </head>
+  <body>
+    <div id="hud">
+      <b>Hex layer prototype</b><br />
+      Click a hex to toggle locked / unlocked — this is the manipulable SVG layer.<br />
+      <a href="/">← back to the game</a>
+    </div>
+    <div id="frame">
+      <img src="/map-source.png" alt="" draggable="false" />
+      <svg id="hexlayer" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1536 864" preserveAspectRatio="none"></svg>
+    </div>
+    <script type="module">
+      // Load the extracted hex layer and wire the unlock toggle demo.
+      const svg = document.getElementById("hexlayer");
+      const res = await fetch("/map/map.svg");
+      const text = await res.text();
+      const parsed = new DOMParser().parseFromString(text, "image/svg+xml");
+      svg.append(...parsed.documentElement.children);
+      svg.addEventListener("click", (e) => {
+        const hex = e.target.closest(".hex");
+        if (hex) hex.classList.toggle("unlocked");
+      });
+    </script>
+  </body>
+</html>

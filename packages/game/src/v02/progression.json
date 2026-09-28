@@ -1,0 +1,218 @@
+[
+ {
+  "level": 1,
+  "rank": "Humble",
+  "maxHexes": 1,
+  "newCapacity": 1,
+  "unlocksThisLevel": 2,
+  "cumulativeBuildings": 2,
+  "expectedAvgStage": 1
+ },
+ {
+  "level": 2,
+  "rank": "Humble",
+  "maxHexes": 2,
+  "newCapacity": 1,
+  "unlocksThisLevel": 3,
+  "cumulativeBuildings": 5,
+  "expectedAvgStage": 1
+ },
+ {
+  "level": 3,
+  "rank": "Humble",
+  "maxHexes": 4,
+  "newCapacity": 2,
+  "unlocksThisLevel": 3,
+  "cumulativeBuildings": 8,
+  "expectedAvgStage": 1.35
+ },
+ {
+  "level": 4,
+  "rank": "Humble",
+  "maxHexes": 6,
+  "newCapacity": 2,
+  "unlocksThisLevel": 2,
+  "cumulativeBuildings": 10,
+  "expectedAvgStage": 1.8
+ },
+ {
+  "level": 5,
+  "rank": "Starter",
+  "maxHexes": 8,
+  "newCapacity": 2,
+  "unlocksThisLevel": 2,
+  "cumulativeBuildings": 12,
+  "expectedAvgStage": 1.35
+ },
+ {
+  "level": 6,
+  "rank": "Starter",
+  "maxHexes": 11,
+  "newCapacity": 3,
+  "unlocksThisLevel": 3,
+  "cumulativeBuildings": 15,
+  "expectedAvgStage": 1.35
+ },
+ {
+  "level": 7,
+  "rank": "Starter",
+  "maxHexes": 14,
+  "newCapacity": 3,
+  "unlocksThisLevel": 3,
+  "cumulativeBuildings": 18,
+  "expectedAvgStage": 1.8
+ },
+ {
+  "level": 8,
+  "rank": "Starter",
+  "maxHexes": 18,
+  "newCapacity": 4,
+  "unlocksThisLevel": 2,
+  "cumulativeBuildings": 20,
+  "expectedAvgStage": 1.8
+ },
+ {
+  "level": 9,
+  "rank": "Growing",
+  "maxHexes": 22,
+  "newCapacity": 4,
+  "unlocksThisLevel": 2,
+  "cumulativeBuildings": 22,
+  "expectedAvgStage": 1.35
+ },
+ {
+  "level": 10,
+  "rank": "Growing",
+  "maxHexes": 26,
+  "newCapacity": 4,
+  "unlocksThisLevel": 3,
+  "cumulativeBuildings": 25,
+  "expectedAvgStage": 1.35
+ },
+ {
+  "level": 11,
+  "rank": "Growing",
+  "maxHexes": 30,
+  "newCapacity": 4,
+  "unlocksThisLevel": 3,
+  "cumulativeBuildings": 28,
+  "expectedAvgStage": 1.8
+ },
+ {
+  "level": 12,
+  "rank": "Growing",
+  "maxHexes": 35,
+  "newCapacity": 5,
+  "unlocksThisLevel": 2,
+  "cumulativeBuildings": 30,
+  "expectedAvgStage": 1.8
+ },
+ {
+  "level": 13,
+  "rank": "Established",
+  "maxHexes": 35,
+  "newCapacity": 0,
+  "unlocksThisLevel": 2,
+  "cumulativeBuildings": 32,
+  "expectedAvgStage": 1.35
+ },
+ {
+  "level": 14,
+  "rank": "Established",
+  "maxHexes": 35,
+  "newCapacity": 0,
+  "unlocksThisLevel": 3,
+  "cumulativeBuildings": 35,
+  "expectedAvgStage": 1.35
+ },
+ {
+  "level": 15,
+  "rank": "Established",
+  "maxHexes": 35,
+  "newCapacity": 0,
+  "unlocksThisLevel": 3,
+  "cumulativeBuildings": 38,
+  "expectedAvgStage": 1.8
+ },
+ {
+  "level": 16,
+  "rank": "Established",
+  "maxHexes": 35,
+  "newCapacity": 0,
+  "unlocksThisLevel": 2,
+  "cumulativeBuildings": 40,
+  "expectedAvgStage": 1.8
+ },
+ {
+  "level": 17,
+  "rank": "Elite",
+  "maxHexes": 35,
+  "newCapacity": 0,
+  "unlocksThisLevel": 1,
+  "cumulativeBuildings": 41,
+  "expectedAvgStage": 1.35
+ },
+ {
+  "level": 18,
+  "rank": "Elite",
+  "maxHexes": 35,
+  "newCapacity": 0,
+  "unlocksThisLevel": 1,
+  "cumulativeBuildings": 42,
+  "expectedAvgStage": 1.35
+ },
+ {
+  "level": 19,
+  "rank": "Elite",
+  "maxHexes": 35,
+  "newCapacity": 0,
+  "unlocksThisLevel": 2,
+  "cumulativeBuildings": 44,
+  "expectedAvgStage": 1.8
+ },
+ {
+  "level": 20,
+  "rank": "Elite",
+  "maxHexes": 35,
+  "newCapacity": 0,
+  "unlocksThisLevel": 1,
+  "cumulativeBuildings": 45,
+  "expectedAvgStage": 1.8
+ },
+ {
+  "level": 21,
+  "rank": "Tycoon",
+  "maxHexes": 35,
+  "newCapacity": 0,
+  "unlocksThisLevel": 1,
+  "cumulativeBuildings": 46,
+  "expectedAvgStage": 1.35
+ },
+ {
+  "level": 22,
+  "rank": "Tycoon",
+  "maxHexes": 35,
+  "newCapacity": 0,
+  "unlocksThisLevel": 1,
+  "cumulativeBuildings": 47,
+  "expectedAvgStage": 1.35
+ },
+ {
+  "level": 23,
+  "rank": "Tycoon",
+  "maxHexes": 35,
+  "newCapacity": 0,
+  "unlocksThisLevel": 2,
+  "cumulativeBuildings": 49,
+  "expectedAvgStage": 1.8
+ },
+ {
+  "level": 24,
+  "rank": "Tycoon",
+  "maxHexes": 35,
+  "newCapacity": 0,
+  "unlocksThisLevel": 1,
+  "cumulativeBuildings": 50,
+  "expectedAvgStage": 1.8
+ }
+]

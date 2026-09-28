@@ -1,0 +1,37 @@
+[
+ {
+  "name": "Mass Retail",
+  "baseMix": 0.45,
+  "valueFactor": 1,
+  "prestigeSens": 0.1,
+  "capitalSens": 0.05
+ },
+ {
+  "name": "SMB",
+  "baseMix": 0.2,
+  "valueFactor": 1.4,
+  "prestigeSens": 0.15,
+  "capitalSens": 0.15
+ },
+ {
+  "name": "Affluent",
+  "baseMix": 0.18,
+  "valueFactor": 2,
+  "prestigeSens": 0.4,
+  "capitalSens": 0.25
+ },
+ {
+  "name": "HNW",
+  "baseMix": 0.12,
+  "valueFactor": 3.5,
+  "prestigeSens": 0.7,
+  "capitalSens": 0.55
+ },
+ {
+  "name": "Institutional",
+  "baseMix": 0.05,
+  "valueFactor": 5,
+  "prestigeSens": 0.8,
+  "capitalSens": 0.9
+ }
+]

@@ -1,19 +1,21 @@
 import {
-  empireLevel,
+  STARTER_HEX_ID,
+  STARTER_CASH_MINOR,
+  clampLevel,
   onboardingGuideFor,
   onboardingLevel as onboardingLevelForXp,
   onboardingMilestone,
   onboardingStep as onboardingStepForMilestones,
   resolvePlacement,
   ONBOARDING_MILESTONES,
-  NEW_PLAYER_BOOST_HOURS,
-  STARTER_CASH_MINOR,
+  parcelForHex,
   utcDay,
   type PlacedCard,
 } from "@plotgo/game";
 import { prisma } from "../../infrastructure/postgres/client";
 import { newId, num } from "../../shared/types";
 import { ensureOpeningLedger } from "../economy/ledger.service";
+import { awardLand } from "./empire.service";
 
 /**
  * Create a fresh player account (starter Cash, new-player acquisition boost
@@ -46,15 +48,25 @@ export async function createPlayer(account: { id?: string; privyUserId?: string 
       satisfactionBps: 5000,
       transactions: 0,
       volumeMinor: 0,
-      // New-player acquisition boost (doc Model Assumptions): 3x for 24h.
-      acquisitionBoostUntil: now + NEW_PLAYER_BOOST_HOURS * 3_600_000,
+      // v0.2: the customer-simulation acquisition boost is retired (settle no
+      // longer reads this column); kept at 0 for schema compatibility.
+      acquisitionBoostUntil: 0,
+      empireLevel: 1,
+      empireXp: 0,
       lastMeaningfulActionAt: now,
       offlineStartedAt: now,
       offlineProcessedUntil: now,
       presenceState: "engaged",
     },
   });
+  // v0.2 bootstrap: the starter parcel (hex 35 = parcel D05) is granted at
+  // creation so a fresh account can place its first building immediately.
+  await prisma.plotgoLand.create({
+    data: { id: newId(), playerId: id, hexId: STARTER_HEX_ID, method: "starter_grant", priceMinor: 0, acquiredAt: now },
+  });
   await ensureOpeningLedger(prisma, id, STARTER_CASH_MINOR);
+  // v1.0: the bootstrap grant counts as a land acquisition (75 × Entry = 75 XP).
+  await awardLand(id, parcelForHex(STARTER_HEX_ID) ?? "D05");
   return prisma.player.findUniqueOrThrow({ where: { id } });
 }
 
@@ -192,7 +204,13 @@ export async function tutorialRelocationAvailable(playerId: string, board: Place
   return board.some((card) => card.type === "cash_kiosk") && board.some((card) => card.type === "savings_stand");
 }
 
-export async function currentEmpireLevel(playerId: string, board: PlacedCard[]): Promise<number> {
-  const row = await onboardingRow(playerId);
-  return row && row.onboardingXp > 0 ? Math.max(empireLevel(board), onboardingLevelForXp(row.onboardingXp)) : empireLevel(board);
+/**
+ * v1.0 empire level: authoritative players.empireLevel (XP-driven via the
+ * v1.0 award paths in empire.service, promotion-gated). Onboarding XP stays
+ * display-only and never feeds progression. The `board` argument is kept for
+ * caller compatibility and ignored.
+ */
+export async function currentEmpireLevel(playerId: string, _board?: PlacedCard[]): Promise<number> {
+  const row = await prisma.player.findUnique({ where: { id: playerId }, select: { empireLevel: true } });
+  return row ? clampLevel(row.empireLevel) : 1;
 }

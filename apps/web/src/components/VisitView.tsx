@@ -7,10 +7,9 @@ import {
   INVEST_TERM_DAYS,
   VISIT_ACTIONS,
   VISIT_NOTIONAL_MINOR,
-  cardHourMinor,
+  stageMul,
   visitEligible,
   visitFeeMinor,
-  type PlacedCard,
   type VisitAction,
 } from "@plotgo/game";
 import type { PlotSnapshot } from "@plotgo/shared";
@@ -36,13 +35,16 @@ export function VisitView({ plot }: { plot: PlotSnapshot }) {
   const buildings = board.data?.buildings ?? [];
   const selected = buildings.find((candidate) => candidate.id === buildingId) ?? null;
   const selectedSpec = selected ? CARDS[selected.type] : null;
-  const boardCards: PlacedCard[] = buildings.map((b) => ({ id: b.id, type: b.type, x: b.x, y: b.y, stage: b.stage as 1 | 2 | 3, orientation: b.orientation as 0 | 90 | 180 | 270 }));
   const eligibleActions = selectedSpec ? VISIT_ACTIONS.filter((action) => visitEligible(selectedSpec.lineage, action)) : [];
   const amountMinor = Math.round(Number(amount || "0") * 100);
   const amountOk = Number.isFinite(amountMinor) && amountMinor >= INVEST_MIN_MINOR && amountMinor <= INVEST_MAX_MINOR;
-  const expectedYieldMinor = selected
-    ? Math.round((cardHourMinor({ id: selected.id, type: selected.type, x: selected.x, y: selected.y, stage: selected.stage as 1 | 2 | 3 }, boardCards) * 24 * INVEST_SHARE_BPS) / 10_000)
-    : 0;
+  // v0.2 economics: base net Cash/day × stage multiplier; investor share is INVEST_SHARE_BPS.
+  const expectedYieldMinor =
+    selectedSpec && selected
+      ? Math.round(
+          (selectedSpec.baseNetPerDay * 100 * stageMul(selected.stage as 1 | 2 | 3) * INVEST_SHARE_BPS) / 10_000,
+        )
+      : 0;
 
   const doVisit = (action: VisitAction) => {
     if (!selected) return;

@@ -1,6 +1,5 @@
 import { CARDS, resolveType, type CardSpec } from "./buildings.ts";
 import type { PlacedCard } from "./index.ts";
-import { orientedFootprint } from "./placement.ts";
 
 export type EmpireArchetype = "trading" | "investment" | "banking" | "tokenized_stock";
 
@@ -31,20 +30,12 @@ const specOf = (card: PlacedCard) => CARDS[resolveType(card.type)];
 
 export function resolveArchetype(cards: readonly PlacedCard[], archetype: EmpireArchetype | null, hasPortfolio = false): ArchetypeResolution {
   if (!archetype || cards.length === 0) return { archetype, dominantShare: 0, suppressed: false, reason: null, effects: emptyEffects() };
-  const tileSets = cards.map((card) => {
-    const spec = specOf(card);
-    if (!spec) return { spec: null, tiles: new Set<string>() };
-    const [width, height] = orientedFootprint(spec.id, card.orientation ?? 0);
-    const tiles = new Set<string>();
-    for (let dy = 0; dy < height; dy++) for (let dx = 0; dx < width; dx++) tiles.add(`${card.x + dx}:${card.y + dy}`);
-    return { spec, tiles };
-  });
-  const allTiles = new Set(tileSets.flatMap((item) => [...item.tiles]));
-  const totalTiles = Math.max(1, allTiles.size);
-  const taggedTiles = (predicate: (spec: CardSpec) => boolean) => new Set(tileSets.filter((item) => item.spec && predicate(item.spec)).flatMap((item) => [...item.tiles])).size;
-  const tradeShare = taggedTiles((spec) => spec.lineage === "trade" || spec.lineage === "exchange") / totalTiles;
-  const bankingShare = taggedTiles((spec) => ["bank", "lend", "insure", "vault"].includes(spec.lineage)) / totalTiles;
-  const investmentShare = taggedTiles((spec) => ["fund", "research", "wealth", "treasury"].includes(spec.lineage)) / totalTiles;
+  // One building per hex: a card's board share is its placed-hex share.
+  const tagged = (predicate: (spec: CardSpec) => boolean) => cards.filter((card) => { const spec = specOf(card); return spec ? predicate(spec) : false; }).length;
+  const totalHexes = Math.max(1, cards.length);
+  const tradeShare = tagged((spec) => spec.lineage === "trade" || spec.lineage === "exchange") / totalHexes;
+  const bankingShare = tagged((spec) => ["bank", "lend", "insure", "vault"].includes(spec.lineage)) / totalHexes;
+  const investmentShare = tagged((spec) => ["fund", "research", "wealth", "treasury"].includes(spec.lineage)) / totalHexes;
   const exchange4x4 = cards.some((card) => { const spec = specOf(card); return spec?.lineage === "exchange" && spec.footprint[0] * spec.footprint[1] >= 16; });
   const effects = emptyEffects();
   let dominantShare = 0;
@@ -69,7 +60,7 @@ export function resolveArchetype(cards: readonly PlacedCard[], archetype: Empire
     else if (suppressed) reason = "A 4×4 Stock Exchange suppresses the Banking theme.";
     else { effects.operatingBps = 1_000; effects.riskReliefBps = 1_000; }
   } else {
-    dominantShare = taggedTiles((spec) => ["broker", "exchange", "digital", "research"].includes(spec.lineage)) / totalTiles;
+    dominantShare = tagged((spec) => ["broker", "exchange", "digital", "research"].includes(spec.lineage)) / totalHexes;
     if (dominantShare < 0.4) { suppressed = true; reason = "Brokerage, stock, or data tags occupy less than 40% of the board."; }
     else { effects.listedNotionalBps = hasPortfolio ? 1_000 : 400; effects.operatingBps = effects.listedNotionalBps; }
   }
