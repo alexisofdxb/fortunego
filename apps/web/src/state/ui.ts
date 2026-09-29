@@ -8,12 +8,19 @@ interface UiState {
   moveMode: { cardId: string } | null;
   toast: string;
   openSections: Record<string, boolean>;
+  questOpen: boolean;
+  /** Active card drag from the hand: card type, current pointer, drag origin. */
+  drag: { type: string; x: number; y: number; ox: number; oy: number } | null;
   setInspectId: (id: string | null) => void;
   setPlaceMode: (mode: { type: string } | null) => void;
   setMoveMode: (mode: { cardId: string } | null) => void;
   cancelBoardModes: () => void;
   setToast: (toast: string) => void;
   toggleSection: (id: string) => void;
+  setQuestOpen: (open: boolean) => void;
+  startDrag: (type: string, ox: number, oy: number) => void;
+  updateDrag: (x: number, y: number) => void;
+  endDrag: () => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -22,6 +29,12 @@ export const useUiStore = create<UiState>((set) => ({
   moveMode: null,
   toast: "",
   openSections: {},
+  questOpen: false,
+  drag: null,
+  startDrag: (type, ox, oy) =>
+    set({ drag: { type, x: ox, y: oy, ox, oy }, placeMode: { type }, moveMode: null, inspectId: null }),
+  updateDrag: (x, y) => set((state) => (state.drag ? { drag: { ...state.drag, x, y } } : {})),
+  endDrag: () => set({ drag: null }),
   setInspectId: (inspectId) => set({ inspectId }),
   setPlaceMode: (placeMode) => set({ placeMode, moveMode: null, inspectId: null }),
   setMoveMode: (moveMode) => set({ moveMode, placeMode: null, inspectId: null }),
@@ -29,4 +42,5 @@ export const useUiStore = create<UiState>((set) => ({
   setToast: (toast) => set({ toast }),
   toggleSection: (id) =>
     set((state) => ({ openSections: { ...state.openSections, [id]: !state.openSections[id] } })),
+  setQuestOpen: (open: boolean) => set({ questOpen: open }),
 }));

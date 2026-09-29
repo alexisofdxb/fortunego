@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Crosshair,
   Landmark,
+  LibraryBig,
   ListChecks,
   Mail,
   MoonStar,
@@ -24,6 +25,7 @@ import { PerformancePanel } from "./PerformancePanel";
 import { OfflineBanner } from "./OfflineBanner";
 import { ReceiptBanner } from "./ReceiptBanner";
 import { InboxList } from "./NotificationBell";
+import { CatalogOverlay } from "./Catalog";
 
 type DockItem = {
   id: string;
@@ -43,6 +45,12 @@ export function Dock({ plot }: { plot: PlotSnapshot }) {
   const objectivesOpen = plot.objectives?.lanes.filter((lane) => lane.status !== "complete").length ?? 0;
 
   const items: DockItem[] = [
+    {
+      id: "catalog",
+      label: "Catalog",
+      icon: LibraryBig,
+      body: () => null, // rendered as a full-screen overlay below
+    },
     {
       id: "hunts",
       label: "Market Hunts",
@@ -138,18 +146,22 @@ export function Dock({ plot }: { plot: PlotSnapshot }) {
         })}
       </nav>
       {active ? (
-        <>
-          <div className="dock-backdrop" onClick={() => toggle(`dock-${active.id}`)} />
-          <section className="dock-sheet" role="dialog" aria-label={active.label}>
-            <header className="dock-sheet-head">
-              <b>{active.label}</b>
-              <button className="modal-x" type="button" aria-label="Close" onClick={() => toggle(`dock-${active.id}`)}>
-                <X size={18} />
-              </button>
-            </header>
-            <div className="dock-sheet-body">{active.body(plot)}</div>
-          </section>
-        </>
+        active.id === "catalog" ? (
+          <CatalogOverlay plot={plot} onClose={() => toggle("dock-catalog")} />
+        ) : (
+          <>
+            <div className="dock-backdrop" onClick={() => toggle(`dock-${active.id}`)} />
+            <section className="dock-sheet" role="dialog" aria-label={active.label}>
+              <header className="dock-sheet-head">
+                <b>{active.label}</b>
+                <button className="modal-x" type="button" aria-label="Close" onClick={() => toggle(`dock-${active.id}`)}>
+                  <X size={18} />
+                </button>
+              </header>
+              <div className="dock-sheet-body">{active.body(plot)}</div>
+            </section>
+          </>
+        )
       ) : null}
     </>
   );

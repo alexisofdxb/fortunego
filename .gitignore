@@ -11,3 +11,4 @@ dist
 coverage/
 *.tsbuildinfo
 apps/api/data
+.tmp-xlsx/

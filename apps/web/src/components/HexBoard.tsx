@@ -3,8 +3,9 @@ import { CARDS, lineageColor } from "@plotgo/game";
 import type { PlotSnapshot } from "@plotgo/shared";
 import { useAcquireLand, useFitPreview, useMove, usePlace } from "../api/hooks";
 import { useUiStore } from "../state/ui";
-import { cashLabel, GRADE_CLASS } from "../utils";
+import { cashLabel, CATEGORY_ART, GRADE_CLASS } from "../utils";
 import { HexDrawer } from "./HexDrawer";
+import hexLayout from "../../public/map/hexes.json";
 
 /** Active map variant (day/night x seasons). New variants drop into public/map/variants/. */
 type MapVariant = "spring-day";
@@ -31,6 +32,24 @@ function loadMapLayer(): Promise<string> {
       });
   }
   return mapLayerPromise;
+}
+
+/**
+ * Visual center of each painted parcel. The uniform grid (cx/cy) is what the
+ * SVG interaction layer uses, but the painted plots drift from it by up to
+ * ~130px — refX/refY are the hand-marked painted centers from the reference
+ * map, so all visible overlays (grade dots, tags, locks) anchor to those.
+ */
+const REF_CENTER = new Map(
+  (hexLayout as unknown as { hexes: { id: string; cx: number; cy: number; refX?: number; refY?: number }[] }).hexes.map((h) => [
+    h.id,
+    { x: h.refX ?? h.cx, y: h.refY ?? h.cy },
+  ]),
+);
+
+function centerOf(hex: { hexId: string; cx: number; cy: number }): { x: number; y: number } {
+  const ref = REF_CENTER.get(hex.hexId);
+  return { x: ((ref?.x ?? hex.cx) / MAP_W) * 100, y: ((ref?.y ?? hex.cy) / MAP_H) * 100 };
 }
 
 function fitLabel(multiplier: number): string {
@@ -187,11 +206,12 @@ export function HexBoard({ plot }: { plot: PlotSnapshot }) {
             if (hex.owned) return null;
             const gradeClass = GRADE_CLASS[hex.grade ?? ""] ?? "grade-entry";
             const locked = levelLocked(hex);
+            const pos = centerOf(hex);
             return (
               <div
                 key={hex.hexId}
                 className={`hex-marker ${gradeClass}${hex.frontier ? " frontier" : ""}${locked ? " locked" : ""}`}
-                style={{ left: `${(hex.cx / MAP_W) * 100}%`, top: `${(hex.cy / MAP_H) * 100}%` }}
+                style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
               >
                 <i className="land-badge" />
                 {hex.frontier ? (
@@ -200,6 +220,41 @@ export function HexBoard({ plot }: { plot: PlotSnapshot }) {
                   </span>
                 ) : null}
               </div>
+            );
+          })}
+
+          {/* Placed buildings: medal + name + stage pips on the painted parcel center. */}
+          {plot.cards.map((card) => {
+            const spec = CARDS[card.type];
+            const pos = centerOf({ hexId: card.hexId, cx: 0, cy: 0 });
+            return (
+              <div key={card.id} className="hex-chip" style={{ left: `${pos.x}%`, top: `${pos.y}%` }}>
+                <span className="hex-chip-medal">{CATEGORY_ART[spec?.category ?? ""] ?? "🏢"}</span>
+                <span className="hex-chip-name">{spec?.name ?? card.type}</span>
+                <span className="hex-chip-pips">
+                  {Array.from({ length: card.stage }, (_, i) => (
+                    <i key={i} />
+                  ))}
+                </span>
+              </div>
+            );
+          })}
+
+          {/* Lock badges: closed on locked parcels, open on the acquirable frontier. */}
+          {hexBoard.hexes.map((hex) => {
+            if (hex.owned) return null;
+            const locked = levelLocked(hex);
+            const open = hex.frontier && !locked;
+            const pos = centerOf(hex);
+            return (
+              <span
+                key={`lock-${hex.hexId}`}
+                className={`hex-lock${open ? " open" : ""}${hex.frontier ? " frontier" : ""}`}
+                style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+                aria-hidden="true"
+              >
+                {open ? "🔓" : "🔒"}
+              </span>
             );
           })}
 

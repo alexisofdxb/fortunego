@@ -23,5 +23,8 @@
   "packageManager": "pnpm@10.17.0",
   "engines": {
     "node": ">=20.19"
+  },
+  "devDependencies": {
+    "pngjs": "^7.0.0"
   }
 }

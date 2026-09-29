@@ -1,10 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { PlotSnapshot } from "@plotgo/shared";
-import { ObjectivesPanel } from "./ObjectivesPanel";
-import { PromotionGatePanel } from "./PromotionGatePanel";
 import { closingBellCopy, formatCountdown, scrollToSelector } from "../utils";
 import { useUiStore } from "../state/ui";
-import { XP_SOURCE_BASE } from "@plotgo/game";
 
 function BriefingCard({
   id,
@@ -66,7 +63,6 @@ function alertFor(plot: PlotSnapshot): string | null {
  */
 export function DailyBriefing({ plot }: { plot: PlotSnapshot }) {
   const [dismissed, setDismissed] = useState<string[]>([]);
-  const [goalsOpen, setGoalsOpen] = useState(false);
   const dismiss = (id: string) => setDismissed((list) => (list.includes(id) ? list : [...list, id]));
   const isDismissed = (id: string) => dismissed.includes(id);
 
@@ -74,8 +70,6 @@ export function DailyBriefing({ plot }: { plot: PlotSnapshot }) {
   const alertKey = alert ? `alert:${plot.attributes.riskBps}:${Math.round(plot.performance.averageUtilization * 100)}` : null;
   const offers = plot.huntOffers ?? [];
   const activeCount = plot.activeHuntCount ?? 0;
-  const objectives = plot.objectives;
-  const objectiveComplete = objectives?.lanes.filter((lane) => lane.status === "complete").length ?? 0;
   const bell = closingBellCopy(plot.weekStatus);
   const calendar = plot.eventCalendar;
   const nextWindow = calendar?.announced.find((window) => !calendar.current || window.eventId !== calendar.current.eventId) ?? null;
@@ -108,25 +102,6 @@ export function DailyBriefing({ plot }: { plot: PlotSnapshot }) {
     );
   }
 
-  // (a½) Promotion Gate (v1.0) — only while a gate holds the displayed level
-  // back; disappears entirely once every requirement is crossed.
-  const gate = plot.hexBoard.activeGate;
-  if (!isDismissed("promotion") && gate) {
-    const metCount = (["ownedHexes", "builtBusinesses", "stage2PlusBuildings", "uniqueStocks"] as const)
-      .filter((key) => gate.progress[key].current >= gate.progress[key].required).length;
-    cards.push(
-      <BriefingCard
-        id="promotion"
-        title={`Promotion Gate — ${gate.promotionTo}`}
-        summary={gate.met ? `Promotion ready · ${XP_SOURCE_BASE.promotion} XP on crossing` : `${metCount}/4 requirements met · all required`}
-        onDismiss={dismiss}
-        key="promotion"
-      >
-        <PromotionGatePanel board={plot.hexBoard} />
-      </BriefingCard>,
-    );
-  }
-
   // (b) Hunts Today.
   if (!isDismissed("hunts")) {
     cards.push(
@@ -144,29 +119,6 @@ export function DailyBriefing({ plot }: { plot: PlotSnapshot }) {
         <button className="performance-claim" type="button" onClick={() => scrollToSelector('[data-onboarding-target="hunt-strip"]')}>
           View hunt board
         </button>
-      </BriefingCard>,
-    );
-  }
-
-  // (c) Business Objectives — compact card with the canonical panel collapsible.
-  if (!isDismissed("objectives") && objectives) {
-    cards.push(
-      <BriefingCard
-        id="objectives"
-        title="Business Objectives"
-        summary={`${objectiveComplete}/3 complete today · Cash-only rewards`}
-        onDismiss={dismiss}
-        key="objectives"
-      >
-        <p className="briefing-line">
-          {objectiveComplete}/3 complete today · Cash-only rewards · reset at 00:00 UTC
-        </p>
-        <button className="performance-claim" type="button" onClick={() => setGoalsOpen((value) => !value)}>
-          {goalsOpen ? "Hide goals" : "Goals"}
-        </button>
-        <div hidden={!goalsOpen}>
-          <ObjectivesPanel plot={plot} />
-        </div>
       </BriefingCard>,
     );
   }

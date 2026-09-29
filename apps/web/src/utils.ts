@@ -88,3 +88,17 @@ export const GRADE_CLASS: Record<string, string> = {
   Prime: "grade-prime",
   Trophy: "grade-trophy",
 };
+
+/** Building category -> emoji art (used on catalog cards and board chips). */
+export const CATEGORY_ART: Record<string, string> = {
+  "Banking & Savings": "🏦",
+  Brokerage: "📊",
+  "Funds & Asset Management": "💼",
+  "Institutional Finance": "🏛️",
+  "Insurance & Risk": "🛡️",
+  "Lending & Credit": "💳",
+  "Research, Data & Fintech": "🔬",
+  "Retail Finance": "🏪",
+  "Trading & Markets": "📈",
+  "Treasury, Vault & Custody": "🔐",
+};

@@ -51,36 +51,24 @@ export function Header({ plot }: { plot: PlotSnapshot }) {
 
   return (
     <header className="top">
-      <div>
-        <h1 className="brand">PlotGo</h1>
-        <p className="sub">Founder · 12×12</p>
+      <div className="top-left">
+        <div className="avatar-medallion small" title={`Empire Level ${board.empireLevel} · ${board.empireXp.toLocaleString()} XP · land ${board.ownedCount}/${board.capacityForLevel}`}>
+          <span className="avatar-face">🦊</span>
+        </div>
+        <span className="level-pill">Lv {board.empireLevel}</span>
+        <span className="xp-pill" title={`${board.empireXp.toLocaleString()} XP`}>
+          {board.empireXp >= 1000 ? `${(board.empireXp / 1000).toFixed(1)}k` : board.empireXp} XP
+        </span>
       </div>
       <div className="top-stats">
-        <div className="empire-chip" title={`Land capacity ${board.ownedCount}/${board.capacityForLevel} parcels`}>
-          <b>
-            Lv {board.empireLevel} {cap(rankForLevel(board.empireLevel))}
-            {gatePending && gate ? (
-              <span className="gate-badge" title={`Promotion to ${gate.promotionTo} pending — see the Promotion Gate panel`}>
-                ⬆
-              </span>
-            ) : null}
-          </b>
-          <span className="xp-bar">
-            <i style={{ width: `${xpPct}%` }} />
-          </span>
-          <small>
-            {board.empireXp.toLocaleString()}
-            {board.xpForNextLevel > 0 ? ` / ${xpTotal.toLocaleString()} XP` : " XP · MAX"}
-          </small>
-        </div>
-        <div>
-          <span>Cash</span>
+        <span className="resource-chip" title="Cash balance">
+          <i>💵</i>
           <b>{plot.cash}</b>
-        </div>
-        <div>
-          <span>Empire</span>
+        </span>
+        <span className="resource-chip" title="Empire Value">
+          <i>🏛️</i>
           <b>{plot.empireValue}</b>
-        </div>
+        </span>
         <NotificationBell unread={plot.notificationsUnread} />
         {PRIVY_ENABLED ? <LogoutButton /> : null}
       </div>
