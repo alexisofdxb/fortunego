@@ -30,6 +30,7 @@ export function HuntStrip({ plot }: { plot: PlotSnapshot }) {
   const offers = plot.huntOffers ?? all.filter((hunt) => !hunt.started);
   const activeCount = plot.activeHuntCount ?? active.length;
   const queueFull = activeCount >= MAX_ACTIVE_HUNTS;
+  const huntTickets = plot.liveops?.inventory.find((item) => item.itemId === "market_hunt_ticket")?.quantity ?? 0;
 
   return (
     <div className="hunt-strip" data-onboarding-target="hunt-strip">
@@ -40,6 +41,7 @@ export function HuntStrip({ plot }: { plot: PlotSnapshot }) {
         <span>
           {plot.marketHuntPoints}/{plot.marketHuntPointCap} weekly points · {plot.marketHuntSubscore}/100 score · pool{" "}
           {Math.round(plot.marketPoolConsumption * 100)}%
+          {huntTickets > 0 ? ` · ${huntTickets} hunt ticket${huntTickets === 1 ? "" : "s"}` : ""}
         </span>
       </div>
 

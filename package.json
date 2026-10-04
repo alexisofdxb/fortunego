@@ -17,6 +17,7 @@
     "test:progression": "pnpm --filter @plotgo/api exec tsx ../../scripts/progression_v10_acceptance.ts",
     "test:auth": "pnpm --filter @plotgo/api exec tsx ../../scripts/auth_acceptance.ts",
     "test:hex": "pnpm --filter @plotgo/api exec tsx ../../scripts/hex_board_acceptance.ts",
+    "test:liveops": "pnpm --filter @plotgo/api exec tsx ../../scripts/liveops_acceptance.ts",
     "db:push": "pnpm --filter @plotgo/api db:migrate",
     "typecheck": "pnpm -r typecheck"
   },

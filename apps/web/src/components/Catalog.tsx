@@ -132,11 +132,10 @@ export function CatalogOverlay({ plot, onClose }: { plot: PlotSnapshot; onClose:
   const modules = plot.modules?.inventory ?? [];
 
   const act = (e: Entry) => {
-    if (e.status === "available") {
+    if (e.status === "available" || e.status === "placed") {
+      // Multiple copies are allowed (35 parcels, 50 buildings) — placed cards
+      // stay buildable; inspect a placed copy by clicking its chip on the board.
       setPlaceMode({ type: e.id });
-      onClose();
-    } else if (e.status === "placed") {
-      setInspectId(e.firstId);
       onClose();
     }
   };
@@ -194,7 +193,7 @@ export function CatalogOverlay({ plot, onClose }: { plot: PlotSnapshot; onClose:
                     key={e.id}
                     className={`cat-card st-${e.status}`}
                     onClick={() => act(e)}
-                    aria-label={`${e.name} — ${group.label}`}
+                    aria-label={`${e.name} — ${group.label}${e.status === "placed" ? " (build another)" : ""}`}
                   >
                     <span className="cat-cost">💵 {cashLabel(e.costMinor)}</span>
                     <span className={`cat-ribbon rib-${e.status}`}>
@@ -218,6 +217,7 @@ export function CatalogOverlay({ plot, onClose }: { plot: PlotSnapshot; onClose:
                         {e.netPerDay != null ? <i>${e.netPerDay}/day base</i> : null}
                         <i>{cashLabel(e.costMinor)}</i>
                         {e.moduleSlots > 0 ? <i>{e.moduleSlots} module slots</i> : null}
+                        {e.status === "placed" ? <i>tap to build another copy</i> : null}
                       </span>
                     </span>
                   </button>

@@ -24,6 +24,7 @@ import { recordMeaningfulAction } from "../../shared/offline";
 import { addWeeklyHuntPerformance } from "../performance/performance.service";
 import { recordLedger } from "../economy/ledger.service";
 import { snapshot, settlePlayer } from "../../shared/snapshot";
+import { scoreAction } from "../liveops/liveops.service";
 import { num } from "../../shared/types";
 
 export const huntRoutes = new Hono<AppEnv>();
@@ -39,6 +40,7 @@ huntRoutes.post("/api/hunts/start", requirePlayer, async (c) => {
   const result = await startHuntOffer(id, body.huntId);
   if ("error" in result) return c.json({ error: result.error }, result.status);
   await recordMeaningfulAction(id, `hunt_start:${body.huntId}`);
+  await scoreAction(id, "hunt_start");
   return c.json({ ...(await snapshot(id)), started: body.huntId });
 });
 
@@ -116,6 +118,7 @@ huntRoutes.post("/api/hunt/claim", requirePlayer, async (c) => {
   await awardRevenueMilestone(id);
   if (slot.stockTicker) await recordOnboardingMilestone(id, "onboarding_first_stock", "stock.reward");
   await recordMeaningfulAction(id, `hunt:${slot.id}`);
+  await scoreAction(id, "hunt_claim");
   const snap = await snapshot(id);
   return c.json({ ...snap, dropped: slot.stockTicker, fallbackCashMinor: claimResult.fallbackCashMinor, rewardRarity: slot.rewardRarity, rewardValueMinor: slot.rewardValueMinor, moduleReward: slot.moduleReward ? { ...slot.moduleReward, label: moduleRewardLabel(slot.moduleReward), rewardId: claimResult.moduleRewardId } : null, huntPoints: slot.points });
 });

@@ -1,5 +1,7 @@
+import { buildingUnlockLevel } from "@plotgo/game";
 import type { PlotSnapshot } from "@plotgo/shared";
 import { useOnboardingSkip } from "../api/hooks";
+import { cashLabel } from "../utils";
 import { useUiStore } from "../state/ui";
 
 /**
@@ -17,6 +19,18 @@ export function QuestTracker({ plot }: { plot: PlotSnapshot }) {
   const objectives = plot.objectives;
   const gate = plot.hexBoard.activeGate;
   const onboarding = plot.onboarding && plot.onboarding.status === "active" ? plot.onboarding : null;
+
+  // What's next: nearest locked buildings + nearest level-gated parcels.
+  const nextBuildings = plot.catalog
+    .filter((c) => !c.unlocked)
+    .map((c) => ({ card: c, level: buildingUnlockLevel(c.id) ?? 99 }))
+    .filter((e) => e.level > plot.empireLevel)
+    .sort((a, b) => a.level - b.level || a.card.placeCostMinor - b.card.placeCostMinor)
+    .slice(0, 3);
+  const nextLand = plot.hexBoard.hexes
+    .filter((h) => !h.owned && h.requiredLevel > plot.empireLevel)
+    .sort((a, b) => a.requiredLevel - b.requiredLevel || a.priceMinor - b.priceMinor)
+    .slice(0, 2);
 
   return (
     <aside className="quest-tracker" role="dialog" aria-label="Quests">
@@ -65,6 +79,38 @@ export function QuestTracker({ plot }: { plot: PlotSnapshot }) {
           </ul>
         </section>
       ) : null}
+
+      <section className="quest-section">
+        <h3>Next Unlocks</h3>
+        <ul>
+          {nextBuildings.map(({ card, level }) => (
+            <li key={card.id}>
+              <i />
+              <span>
+                {card.name}
+                <em>Lv {level}</em>
+              </span>
+            </li>
+          ))}
+          {nextLand.map((h) => (
+            <li key={h.hexId}>
+              <i />
+              <span>
+                Parcel #{h.hexId} — {h.grade}
+                <em>
+                  Lv {h.requiredLevel} · {h.priceMinor > 0 ? cashLabel(h.priceMinor) : "deed"}
+                </em>
+              </span>
+            </li>
+          ))}
+          {nextBuildings.length === 0 && nextLand.length === 0 ? (
+            <li className="done">
+              <i />
+              <span>Everything at your level is unlocked — expand your frontier 🔓</span>
+            </li>
+          ) : null}
+        </ul>
+      </section>
 
       {gate ? (
         <section className="quest-section">

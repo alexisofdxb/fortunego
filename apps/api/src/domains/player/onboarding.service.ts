@@ -15,7 +15,9 @@ import {
 import { prisma } from "../../infrastructure/postgres/client";
 import { newId, num } from "../../shared/types";
 import { ensureOpeningLedger } from "../economy/ledger.service";
+import { grantModuleInventory } from "../modules/modules.service";
 import { awardLand } from "./empire.service";
+import { assignWorldRegion } from "../world/world.service";
 
 /**
  * Create a fresh player account (starter Cash, new-player acquisition boost
@@ -67,6 +69,10 @@ export async function createPlayer(account: { id?: string; privyUserId?: string 
   await ensureOpeningLedger(prisma, id, STARTER_CASH_MINOR);
   // v1.0: the bootstrap grant counts as a land acquisition (75 × Entry = 75 XP).
   await awardLand(id, parcelForHex(STARTER_HEX_ID) ?? "D05");
+  // Starter gift: one common module so the first-time tutorial can teach
+  // equipping without depending on random hunt drops.
+  await grantModuleInventory(prisma, id, "mod_customer_signage", 1);
+  await assignWorldRegion(id);
   return prisma.player.findUniqueOrThrow({ where: { id } });
 }
 

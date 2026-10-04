@@ -1,0 +1,172 @@
+[
+  {
+    "id": "module_shard",
+    "name": "Module Shard",
+    "category": "Crafting",
+    "rarity": "Common",
+    "icon": "🧩",
+    "stackable": true,
+    "tradable": false,
+    "notes": "Duplicate salvage and case drops. Feeds module craft later."
+  },
+  {
+    "id": "precision_component",
+    "name": "Precision Component",
+    "category": "Crafting",
+    "rarity": "Rare",
+    "icon": "⚙️",
+    "stackable": true,
+    "tradable": false,
+    "notes": "Mid-tier module upgrade sink."
+  },
+  {
+    "id": "executive_component",
+    "name": "Executive Component",
+    "category": "Crafting",
+    "rarity": "Epic",
+    "icon": "🛠️",
+    "stackable": true,
+    "tradable": false,
+    "notes": "Epic/Legendary module recipes."
+  },
+  {
+    "id": "development_permit",
+    "name": "Development Permit",
+    "category": "Permit",
+    "rarity": "Rare",
+    "icon": "📜",
+    "stackable": true,
+    "tradable": false,
+    "notes": "Special development actions. Does not bypass Empire Level gates."
+  },
+  {
+    "id": "prime_permit",
+    "name": "Prime Permit",
+    "category": "Permit",
+    "rarity": "Epic",
+    "icon": "🏅",
+    "stackable": true,
+    "tradable": false,
+    "notes": "Prime/Trophy development actions. Use sparingly."
+  },
+  {
+    "id": "market_hunt_ticket",
+    "name": "Market Hunt Ticket",
+    "category": "Ticket",
+    "rarity": "Common",
+    "icon": "🎫",
+    "stackable": true,
+    "tradable": false,
+    "notes": "One Market Hunt attempt. P0 grants tickets as rewards; hunts stay startable without a ticket."
+  },
+  {
+    "id": "opportunity_reroll",
+    "name": "Opportunity Reroll",
+    "category": "Ticket",
+    "rarity": "Common",
+    "icon": "🔄",
+    "stackable": true,
+    "tradable": false,
+    "notes": "Reroll one opportunity slot. Does not unlock the permanent catalog."
+  },
+  {
+    "id": "maturation_booster",
+    "name": "Maturation Booster",
+    "category": "Boost",
+    "rarity": "Rare",
+    "icon": "⏩",
+    "stackable": true,
+    "tradable": false,
+    "notes": "Temporary maturation / multiplier. Cannot exceed hard balance cap."
+  },
+  {
+    "id": "customer_campaign",
+    "name": "Customer Campaign",
+    "category": "Boost",
+    "rarity": "Rare",
+    "icon": "📣",
+    "stackable": true,
+    "tradable": false,
+    "notes": "Temporary acquisition multiplier."
+  },
+  {
+    "id": "efficiency_voucher",
+    "name": "Efficiency Voucher",
+    "category": "Boost",
+    "rarity": "Rare",
+    "icon": "📈",
+    "stackable": true,
+    "tradable": false,
+    "notes": "Temporary operating efficiency."
+  },
+  {
+    "id": "stock_fragment",
+    "name": "Stock Fragment",
+    "category": "Collectible",
+    "rarity": "Variable",
+    "icon": "📄",
+    "stackable": true,
+    "tradable": false,
+    "notes": "In-game collection fragment. Not a crypto asset. Hunt fragments stay on the fragment table."
+  },
+  {
+    "id": "city_cosmetic_token",
+    "name": "City Cosmetic Token",
+    "category": "Cosmetic",
+    "rarity": "Variable",
+    "icon": "🎨",
+    "stackable": true,
+    "tradable": false,
+    "notes": "Visual city customization. No economic power."
+  },
+  {
+    "id": "business_key",
+    "name": "Business Key",
+    "category": "Key",
+    "rarity": "Common",
+    "icon": "🔑",
+    "stackable": true,
+    "tradable": false,
+    "notes": "Opens one Business Case."
+  },
+  {
+    "id": "market_key",
+    "name": "Market Key",
+    "category": "Key",
+    "rarity": "Common",
+    "icon": "🗝️",
+    "stackable": true,
+    "tradable": false,
+    "notes": "Opens one Market Case."
+  },
+  {
+    "id": "event_key",
+    "name": "Event Key",
+    "category": "Key",
+    "rarity": "Rare",
+    "icon": "🔐",
+    "stackable": true,
+    "tradable": false,
+    "notes": "Opens one Event Case."
+  },
+  {
+    "id": "executive_key",
+    "name": "Executive Key",
+    "category": "Key",
+    "rarity": "Epic",
+    "icon": "💼",
+    "stackable": true,
+    "tradable": false,
+    "notes": "Opens one Executive Case."
+  },
+  {
+    "id": "tycoon_key",
+    "name": "Tycoon Key",
+    "category": "Key",
+    "rarity": "Legendary",
+    "icon": "👑",
+    "stackable": true,
+    "tradable": false,
+    "notes": "Opens one Tycoon Case."
+  }
+]

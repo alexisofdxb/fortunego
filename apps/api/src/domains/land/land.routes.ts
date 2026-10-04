@@ -4,6 +4,7 @@ import { prisma } from "../../infrastructure/postgres/client";
 import { requirePlayer } from "../../middleware/auth";
 import type { AppEnv } from "../../shared/types";
 import { acquireLand, landFit, landView, ownedLandRows } from "./land.service";
+import { scoreAction } from "../liveops/liveops.service";
 
 export const landRoutes = new Hono<AppEnv>();
 
@@ -28,6 +29,7 @@ landRoutes.post("/api/land/acquire", requirePlayer, async (c) => {
   const body = Acquire.parse(await c.req.json());
   const outcome = await acquireLand(id, body.hexId);
   if (outcome.status !== 200) return c.json({ error: outcome.error }, outcome.status);
+  if (!outcome.replayed) await scoreAction(id, "land");
   const player = await prisma.player.findUnique({ where: { id }, select: { empireLevel: true } });
   const rows = await ownedLandRows(id);
   return c.json({ ownership: outcome.ownership, replayed: outcome.replayed, ...landView(player?.empireLevel ?? 1, rows) });

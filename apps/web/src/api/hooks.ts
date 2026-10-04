@@ -153,6 +153,59 @@ export function useUpgrade() {
   );
 }
 
+export function useOpenLiveopsCase() {
+  return usePlotMutation(
+    (caseType: "daily" | "business" | "market" | "event" | "executive" | "tycoon") =>
+      api<PlotSnapshot & { caseResult?: { label: string } }>("/api/liveops/cases/open", {
+        method: "POST",
+        body: JSON.stringify({ caseType }),
+      }),
+    (data) => (data.caseResult?.label ? `Opened: ${data.caseResult.label}` : "Case opened."),
+  );
+}
+
+export function useUnlockSeasonPass() {
+  return usePlotMutation(() => api("/api/liveops/pass/unlock", { method: "POST", body: "{}" }), () => "Premium track unlocked with $PLOT.");
+}
+
+export function useBuyLiveopsSku() {
+  return usePlotMutation(
+    (body: { sku: string; quoteId: string }) =>
+      api<PlotSnapshot & { shopItem?: string }>("/api/liveops/shop/buy", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    (data) => (data.shopItem ? `Purchased ${data.shopItem}` : "Purchased."),
+  );
+}
+
+export function useLiveopsFaucet() {
+  return usePlotMutation(
+    () => api<PlotSnapshot & { faucetPlot?: number }>("/api/liveops/shop/faucet", { method: "POST", body: "{}" }),
+    (data) => `Granted ${(data.faucetPlot ?? 0).toLocaleString()} $PLOT.`,
+  );
+}
+
+export function useClaimSeasonPass() {
+  return usePlotMutation(
+    (body: { level: number; track: "free" | "premium" }) =>
+      api<PlotSnapshot & { passReward?: string }>("/api/liveops/pass/claim", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    (data) => (data.passReward ? `Claimed: ${data.passReward}` : "Pass reward claimed."),
+  );
+}
+
+export function useLiveopsLeaderboard(eventId: string | null) {
+  return useQuery({
+    queryKey: ["liveops-leaderboard", eventId],
+    enabled: Boolean(eventId),
+    staleTime: 15_000,
+    queryFn: () => api(`/api/liveops/leaderboard?eventId=${encodeURIComponent(eventId!)}`),
+  });
+}
+
 export function useHuntClaim() {
   return usePlotMutation(
     (body: HuntClaimRequest) => api<PlotSnapshot & { dropped?: string | null }>("/api/hunt/claim", { method: "POST", body: JSON.stringify(body) }),
@@ -264,6 +317,43 @@ export function useLeaderboard() {
       if (!parsed.success) throw parsed.error;
       return parsed.data;
     },
+  });
+}
+
+export function useWorldMap() {
+  return useQuery({
+    queryKey: ["world"],
+    queryFn: () => api("/api/world"),
+    staleTime: 10_000,
+  });
+}
+
+export function useVisitWorld() {
+  const setVisitMode = useUiStore((s) => s.setVisitMode);
+  const toggle = useUiStore((s) => s.toggleSection);
+  const setToast = useUiStore((s) => s.setToast);
+  return useMutation({
+    mutationFn: (regionId: string) =>
+      api<{
+        region: { id: string; label: string };
+        host: {
+          playerId: string;
+          name: string;
+          buildings: { id: string; type: string; name: string; hexId: string; stage: number; lineage: string }[];
+        };
+      }>("/api/world/visit", { method: "POST", body: JSON.stringify({ regionId }) }),
+    onSuccess: (data) => {
+      setVisitMode({
+        hostId: data.host.playerId,
+        name: data.host.name,
+        regionId: data.region.id,
+        regionLabel: data.region.label,
+        buildings: data.host.buildings,
+      });
+      toggle("dock-world");
+      setToast(`Arrived in ${data.host.name}'s city`);
+    },
+    onError: (error) => setToast(error instanceof Error ? error.message : String(error)),
   });
 }
 

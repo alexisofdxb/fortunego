@@ -9,6 +9,7 @@ import { Hand } from "./components/Hand";
 import { InspectSheet } from "./components/InspectSheet";
 import { Dock } from "./components/Dock";
 import { DragLayer } from "./components/DragLayer";
+import { Tutorial } from "./components/Tutorial";
 import { CARDS } from "@plotgo/game";
 
 export default function App() {
@@ -24,6 +25,8 @@ export default function App() {
   const { data: plot } = usePlot();
   const placeMode = useUiStore((s) => s.placeMode);
   const moveMode = useUiStore((s) => s.moveMode);
+  const visitMode = useUiStore((s) => s.visitMode);
+  const setVisitMode = useUiStore((s) => s.setVisitMode);
   const hasFreeParcel = plot
     ? plot.hexBoard.hexes.some((h) => h.owned && !plot.cards.some((c) => c.hexId === h.hexId))
     : false;
@@ -45,6 +48,16 @@ export default function App() {
       <QuestTracker plot={plot} />
       <Toast />
       <HexBoard plot={plot} />
+      {visitMode ? (
+        <div className="visit-banner">
+          <span>
+            Visiting {visitMode.name} · region {visitMode.regionLabel}
+          </span>
+          <button type="button" className="claim" onClick={() => setVisitMode(null)}>
+            Leave city
+          </button>
+        </div>
+      ) : null}
       <p className="place-hint" id="place-hint">
         {placeMode && !hasFreeParcel
           ? `All your parcels are occupied — acquire a 🔓 frontier parcel first, or tap ✕ to cancel`
@@ -62,7 +75,8 @@ export default function App() {
           ✕ Cancel
         </button>
       ) : null}
-      <Hand plot={plot} />
+      {visitMode ? null : <Hand plot={plot} />}
+      <Tutorial plot={plot} />
       <DragLayer />
       <InspectSheet plot={plot} />
       <Dock plot={plot} />

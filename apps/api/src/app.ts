@@ -17,6 +17,8 @@ import { settlementRoutes } from "./domains/settlement/settlement.routes";
 import { objectiveRoutes } from "./domains/objectives/objectives.routes";
 import { landRoutes } from "./domains/land/land.routes";
 import { notificationRoutes } from "./domains/notifications/notifications.routes";
+import { liveopsRoutes } from "./domains/liveops/liveops.routes";
+import { worldRoutes } from "./domains/world/world.routes";
 import { jobRoutes } from "./infrastructure/tasks/job.routes";
 import { ensureModuleConfig } from "./domains/modules/modules.service";
 import { requirePlayer } from "./middleware/auth";
@@ -55,6 +57,8 @@ app.route("/", visitRoutes);
 app.route("/", objectiveRoutes);
 app.route("/", landRoutes);
 app.route("/", notificationRoutes);
+app.route("/", liveopsRoutes);
+app.route("/", worldRoutes);
 app.route("/", jobRoutes);
 
 registerErrorHandler(app);

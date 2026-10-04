@@ -687,7 +687,119 @@ export const plotSnapshotSchema = z.object({
       }),
     ),
   }),
+  liveops: z.object({
+    inventory: z.array(
+      z.object({
+        itemId: z.string(),
+        name: z.string(),
+        category: z.string(),
+        rarity: z.string(),
+        icon: z.string(),
+        quantity: z.number(),
+      }),
+    ),
+    campaigns: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        tone: z.string(),
+        seasonId: z.string(),
+        startsAt: z.number(),
+        endsAt: z.number(),
+        remainingMs: z.number(),
+        points: z.number(),
+        nextMilestonePoints: z.number().nullable(),
+        qualifying: z.array(z.string()),
+        qualifyingCopy: z.string(),
+        rewardsCopy: z.string(),
+        durationLabel: z.string(),
+        milestones: z.array(
+          z.object({
+            id: z.string(),
+            points: z.number(),
+            claimed: z.boolean(),
+            label: z.string(),
+          }),
+        ),
+        rank: z.number(),
+        fieldSize: z.number(),
+      }),
+    ),
+    cases: z.object({
+      dailyAvailable: z.boolean(),
+      businessKeys: z.number(),
+      marketKeys: z.number(),
+      eventKeys: z.number(),
+      executiveKeys: z.number(),
+      tycoonKeys: z.number(),
+      pity: z.object({
+        business: z.number(),
+        market: z.number(),
+        event: z.number(),
+        executive: z.number(),
+        tycoon: z.number(),
+      }),
+      lastOpen: z
+        .object({
+          caseType: z.string(),
+          label: z.string(),
+          openedAt: z.number(),
+        })
+        .nullable(),
+    }),
+    pass: z.object({
+      seasonId: z.string(),
+      xp: z.number(),
+      level: z.number(),
+      nextCumulativeXp: z.number().nullable(),
+      premium: z.boolean(),
+      remainingMs: z.number(),
+      passPlot: z.number(),
+      levels: z.array(
+        z.object({
+          level: z.number(),
+          cumulativeXp: z.number(),
+          major: z.boolean(),
+          free: z.object({ label: z.string(), claimed: z.boolean() }),
+          premium: z.object({ label: z.string(), claimed: z.boolean() }),
+        }),
+      ),
+    }),
+    shop: z.object({
+      passPlot: z.number(),
+      faucet: z.boolean(),
+      offers: z.array(
+        z.object({
+          sku: z.string(),
+          name: z.string(),
+          blurb: z.string(),
+          slot: z.string(),
+          payment: z.enum(["plot", "cash"]),
+          plotPrice: z.number(),
+          cashMinor: z.number(),
+          usd: z.number(),
+          quoteId: z.string(),
+          expiresAt: z.number(),
+          remaining: z.number(),
+          contents: z.array(z.string()),
+        }),
+      ),
+    }),
+  }),
   dropped: z.string().nullable().optional(),
+  caseResult: z
+    .object({
+      kind: z.string(),
+      label: z.string(),
+      caseType: z.string(),
+      cashMinor: z.number().optional(),
+      itemId: z.string().optional(),
+      quantity: z.number().optional(),
+      moduleId: z.string().optional(),
+      moduleName: z.string().optional(),
+      convertedToShards: z.number().optional(),
+    })
+    .optional(),
 });
 export type PlotSnapshot = z.infer<typeof plotSnapshotSchema>;
 export type HuntView = z.infer<typeof huntViewSchema>;

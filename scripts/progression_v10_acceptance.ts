@@ -184,7 +184,7 @@ async function main(): Promise<void> {
     const command = `"${process.execPath}" "${tsxCli}" src/index.ts`;
     server = spawn(command, {
       cwd: apiCwd,
-      env: { ...process.env, PORT: String(apiPort) },
+      env: { ...process.env, PORT: String(apiPort), PLOTGO_AUTH_MODE: "dev" },
       stdio: "ignore",
       shell: true,
       windowsHide: true,

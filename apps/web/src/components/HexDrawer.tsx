@@ -1,6 +1,8 @@
-import { cashLabel, GRADE_CLASS } from "../utils";
+import { createPortal } from "react-dom";
+import { CARDS, STAGE_LABEL, resolveType, stageMul } from "@plotgo/game";
+import type { HexBoard as HexBoardDto, PlotSnapshot } from "@plotgo/shared";
+import { cashLabel, CATEGORY_ART, GRADE_CLASS } from "../utils";
 import { useAcquireLand, useLandView } from "../api/hooks";
-import type { HexBoard as HexBoardDto } from "@plotgo/shared";
 
 type BoardHex = HexBoardDto["hexes"][number];
 
@@ -22,12 +24,27 @@ const METHOD_LABEL: Record<string, string> = {
   cash_purchase: "Cash Purchase",
 };
 
+function cashDay(dollars: number): string {
+  const rounded = Math.round(dollars * 100) / 100;
+  return `$${rounded.toLocaleString(undefined, {
+    minimumFractionDigits: Number.isInteger(rounded) ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function statusLabel(hex: BoardHex): string {
+  if (hex.owned) return "Owned";
+  if (hex.frontier) return "Frontier";
+  return "Unreached";
+}
+
 /**
- * Right-side parcel drawer: full hex info (grade, coordinates, zone, price,
- * required level, all eight attributes + adjacency/LVI) and the acquire
- * action, gated on empire level (and frontier reachability).
+ * Right-edge inspect drawer. Empty parcels show land stats and acquire.
+ * Occupied parcels lead with the building (expected vs current daily earn)
+ * and keep a compact strip for the plot underneath.
  */
-export function HexDrawer({ board, hexId, onClose }: { board: HexBoardDto; hexId: string; onClose: () => void }) {
+export function HexDrawer({ plot, hexId, onClose }: { plot: PlotSnapshot; hexId: string; onClose: () => void }) {
+  const board = plot.hexBoard;
   const hex: BoardHex | undefined = board.hexes.find((h) => h.hexId === hexId);
   const land = useLandView();
   const acquire = useAcquireLand();
@@ -35,6 +52,75 @@ export function HexDrawer({ board, hexId, onClose }: { board: HexBoardDto; hexId
 
   const attrs = (land.data?.hexes.find((h) => h.hexId === hexId)?.attributes ?? null) as Record<string, number> | null;
   const zone = typeof attrs?.zone === "string" ? attrs.zone : null;
+  const card = plot.cards.find((c) => c.hexId === hexId);
+
+  if (card) {
+    const spec = CARDS[resolveType(card.type)];
+    const stageMultiplier = stageMul(card.stage);
+    const expectedDay = spec ? spec.baseNetPerDay * stageMultiplier : 0;
+    const revenue = plot.attributes.revenue.find((item) => item.buildingId === card.id);
+    const currentDay = (revenue?.amountMinor ?? 0) / 100;
+    const art = CATEGORY_ART[spec?.category ?? ""] ?? "🏢";
+    const parcel = hex.parcelId ?? hex.hexId;
+
+    return createPortal(
+      <aside className="hex-drawer" role="dialog" aria-label={spec?.name ?? card.type}>
+        <header className="hex-drawer-head">
+          <span className="hex-drawer-art" aria-hidden>
+            {art}
+          </span>
+          <span className="hex-drawer-coords">
+            {spec?.category ?? "Building"} · {STAGE_LABEL[card.stage]}
+          </span>
+          <button type="button" className="hex-drawer-close" aria-label="Close" onClick={onClose}>
+            ×
+          </button>
+        </header>
+
+        <h2 className="hex-drawer-title">{spec?.name ?? card.type}</h2>
+        {spec?.description ? <p className="hex-drawer-zone">{spec.description}</p> : null}
+
+        <dl className="hex-drawer-earn">
+          <div>
+            <dt>Expected / day</dt>
+            <dd>{cashDay(expectedDay)}</dd>
+            <small>
+              base {cashDay(spec?.baseNetPerDay ?? 0)} · stage ×{stageMultiplier}
+            </small>
+          </div>
+          <div className="current">
+            <dt>Current / day</dt>
+            <dd>{cashDay(currentDay)}</dd>
+            <small>{revenue ? revenue.model : "Last settle"}</small>
+          </div>
+        </dl>
+
+        <dl className="hex-drawer-stats">
+          <div>
+            <dt>Stage</dt>
+            <dd>
+              {card.stage} / 3 · {STAGE_LABEL[card.stage]}
+            </dd>
+          </div>
+          <div>
+            <dt>Revenue model</dt>
+            <dd>{revenue?.model ?? "service"}</dd>
+          </div>
+        </dl>
+
+        <h3 className="hex-drawer-subhead">Plot</h3>
+        <div className="hex-plot-strip">
+          <b>{parcel}</b>
+          {zone ? <span>{zone}</span> : null}
+          <small>
+            {statusLabel(hex)} · LVI {hex.lvi.toFixed(1)} · Ring {hex.ring ?? "—"}
+          </small>
+        </div>
+      </aside>,
+      document.body,
+    );
+  }
+
   const levelMet = hex.requiredLevel <= board.empireLevel;
   const owned = hex.owned;
   const priceLabel = hex.priceMinor <= 0 ? "Free deed" : `${cashLabel(hex.priceMinor)} Cash`;
@@ -50,7 +136,7 @@ export function HexDrawer({ board, hexId, onClose }: { board: HexBoardDto; hexId
       run: () => acquire.mutate(hex.hexId, { onSuccess: onClose }),
     };
 
-  return (
+  return createPortal(
     <aside className="hex-drawer" role="dialog" aria-label={`Parcel ${hex.parcelId ?? hex.hexId}`}>
       <header className="hex-drawer-head">
         <span className={`land-grade ${GRADE_CLASS[hex.grade ?? ""] ?? "grade-entry"}`}>{hex.grade ?? "Ungraded"}</span>
@@ -62,13 +148,13 @@ export function HexDrawer({ board, hexId, onClose }: { board: HexBoardDto; hexId
         </button>
       </header>
 
-      <h2 className="hex-drawer-title">Parcel {hex.parcelId ?? `#${hex.hexId}`}</h2>
+      <h2 className="hex-drawer-title">{hex.parcelId ?? hex.hexId}</h2>
       {zone ? <p className="hex-drawer-zone">{zone}</p> : null}
 
       <dl className="hex-drawer-stats">
         <div>
           <dt>Status</dt>
-          <dd>{owned ? "Owned" : hex.frontier ? "Frontier" : "Unreached"}</dd>
+          <dd>{statusLabel(hex)}</dd>
         </div>
         <div>
           <dt>Ring</dt>
@@ -113,6 +199,7 @@ export function HexDrawer({ board, hexId, onClose }: { board: HexBoardDto; hexId
         {action.label}
       </button>
       {!owned && levelMet && !hex.frontier ? <p className="hex-drawer-hint">Expand from a parcel you own to reach this land.</p> : null}
-    </aside>
+    </aside>,
+    document.body,
   );
 }

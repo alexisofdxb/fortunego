@@ -1,4 +1,14 @@
 export { CASH_SCALE, STARTER_CASH_MINOR, SETTLE_MS } from "./constants.ts";
+export {
+  WORLD_CELLS,
+  WORLD_HEX_SIZE,
+  WORLD_MAX_RING,
+  WORLD_VIEW,
+  worldCell,
+  worldHexCorners,
+  worldHexPixel,
+  type WorldCell,
+} from "./world.ts";
 export { ONBOARDING_GUIDE, ONBOARDING_MILESTONES, ONBOARDING_XP_THRESHOLDS, onboardingGuideFor, onboardingLevel, onboardingMilestone, onboardingStep, type OnboardingGuide, type OnboardingMilestone, type OnboardingStatus } from "./onboarding.ts";
 export {
   DISTRICT_EVENTS,
@@ -288,6 +298,72 @@ export {
 } from "./event_calendar.ts";
 export { OFFLINE_CONFIG, offlineBandAtElapsedHours, offlineStateForAwayMinutes, splitOfflineWindow, type OfflineBand, type OfflineSlice } from "./offline_economy.ts";
 export { EMPIRE_ARCHETYPES, resolveArchetype, type ArchetypeEffects, type ArchetypeResolution, type EmpireArchetype } from "./archetypes.ts";
+export {
+  DUPLICATE_SHARD_YIELD,
+  LIVEOPS_ITEMS,
+  liveopsItem,
+  requireLiveopsItem,
+  type LiveopsItem,
+  type LiveopsItemCategory,
+  type LiveopsItemRarity,
+} from "./liveops/items.ts";
+export {
+  LIVEOPS_WEEKLY_EVENTS,
+  type LiveopsWeekEvent,
+  type LiveopsWeekTone,
+} from "./liveops/calendar.ts";
+export {
+  LIVEOPS_CAMPAIGNS,
+  liveopsCampaign,
+  liveopsMilestoneLabel,
+  liveopsPointsForRepeat,
+  liveopsWindowsAt,
+  type LiveopsCampaign,
+  type LiveopsMilestone,
+  type LiveopsVerb,
+  type LiveopsWindow,
+} from "./liveops/campaigns.ts";
+export {
+  LIVEOPS_BOOST_POOL,
+  LIVEOPS_CASES,
+  LIVEOPS_LOOT_TABLE_VERSION,
+  liveopsCase,
+  liveopsLootTotal,
+  liveopsPityForceEntry,
+  pickLiveopsLoot,
+  type LiveopsCaseDef,
+  type LiveopsCaseId,
+  type LiveopsLootEntry,
+} from "./liveops/cases.ts";
+export {
+  LIVEOPS_PASS_DAYS,
+  LIVEOPS_PASS_LEVELS,
+  LIVEOPS_PASS_TRACK,
+  liveopsBracket,
+  liveopsPassLevelForXp,
+  liveopsSeasonAt,
+  type LiveopsPassLevel,
+  type LiveopsPassReward,
+  type LiveopsSeason,
+} from "./liveops/pass.ts";
+export {
+  LIVEOPS_FAUCET_PLOT,
+  LIVEOPS_PACKS,
+  LIVEOPS_PASS_PLOT,
+  LIVEOPS_PASS_USD,
+  LIVEOPS_PLOT_REF_USD,
+  LIVEOPS_QUOTE_TTL_MS,
+  LIVEOPS_REPRICE_THRESHOLD,
+  liveopsPack,
+  liveopsPlotPriceFromUsd,
+  liveopsPurchasePeriod,
+  liveopsQuoteWindow,
+  liveopsShopSlots,
+  liveopsShouldReprice,
+  type LiveopsPack,
+  type LiveopsPackContent,
+  type LiveopsShopSlot,
+} from "./liveops/shop.ts";
 export {
   INVEST_MAX_MINOR,
   INVEST_MIN_MINOR,

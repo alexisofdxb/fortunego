@@ -27,6 +27,7 @@ import { eventState } from "../events/events.service";
 import { settleVisitEconomy } from "../economy/visits.service";
 import { produceRiskAlert } from "../notifications/notifications.service";
 import { awardRevenueMilestone } from "../player/empire.service";
+import { scoreAction } from "../liveops/liveops.service";
 import { newId } from "../../shared/types";
 
 export const identityRoutes = new Hono<AppEnv>();
@@ -194,6 +195,7 @@ identityRoutes.post("/api/session/settle", requirePlayer, async (c) => {
   // milestone tier (100 × tier, once per tier).
   await awardRevenueMilestone(id);
   await recordMeaningfulAction(id, `session:${body.verb}`);
+  await scoreAction(id, "settle");
   // Critical risk transition alert (spec sheet 12): risk enters the critical
   // band (>=9000 bps) from below — one notification per player per day max.
   if (result.riskBps >= 9_000 && p.riskBps < 9_000) await produceRiskAlert(id, result.riskBps);

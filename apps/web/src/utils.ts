@@ -1,4 +1,15 @@
 import type { PlotSnapshot } from "@plotgo/shared";
+import hexLayout from "../public/map/hexes.json";
+
+/** DiceBear Lorelei portrait — same seed always draws the same face. */
+export function dicebearAvatarUrl(seed: string, size = 64): string {
+  const params = new URLSearchParams({
+    seed: seed || "founder",
+    backgroundColor: "ffd5dc",
+    size: String(size),
+  });
+  return `https://api.dicebear.com/9.x/lorelei/svg?${params.toString()}`;
+}
 
 export function cashLabel(minor: number) {
   const sign = minor < 0 ? "-" : "";
@@ -88,6 +99,45 @@ export const GRADE_CLASS: Record<string, string> = {
   Prime: "grade-prime",
   Trophy: "grade-trophy",
 };
+
+/** Nearest parcel to a screen point — the whole painted plot (plus margin)
+ *  is a valid drop target, not just the exact polygon. Returns a game hex id. */
+export function nearestHexFromPoint(clientX: number, clientY: number): string | null {
+  const svg = document.querySelector(".hex-frame svg");
+  if (!svg) return null;
+  const r = svg.getBoundingClientRect();
+  if (r.width === 0) return null;
+  const x = ((clientX - r.left) / r.width) * 1672;
+  const y = ((clientY - r.top) / r.height) * 941;
+  let best: string | null = null;
+  let bestScore = 1.7; // ~1.3 hex-radii of forgiveness
+  for (const h of HEX_GEOM) {
+    const cx = h.refX ?? h.cx;
+    const cy = h.refY ?? h.cy;
+    const a = (h.paintedA ?? 73) * 0.96 * 1.2;
+    const b = (h.paintedB ?? 47) * 0.96 * 1.2;
+    const dx = (x - cx) / a;
+    const dy = (y - cy) / b;
+    const score = dx * dx + dy * dy;
+    if (score < bestScore) {
+      bestScore = score;
+      best = h.id;
+    }
+  }
+  return best;
+}
+
+const HEX_GEOM = (hexLayout as { hexes: { id: string; cx: number; cy: number; refX?: number; refY?: number; paintedA?: number; paintedB?: number }[] }).hexes;
+
+/** SVG group id is `hex-12`; game ids are `12`. */
+export function hexIdFromEl(el: Element | null): string | null {
+  const hex = el?.closest?.(".hex");
+  if (!hex) return null;
+  const data = (hex as HTMLElement).dataset?.hex;
+  if (data) return data;
+  const id = hex.id;
+  return id?.startsWith("hex-") ? id.slice(4) : id || null;
+}
 
 /** Building category -> emoji art (used on catalog cards and board chips). */
 export const CATEGORY_ART: Record<string, string> = {

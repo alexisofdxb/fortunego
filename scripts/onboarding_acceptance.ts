@@ -186,7 +186,7 @@ async function main(): Promise<void> {
   try {
     server = spawn(process.execPath, [tsxCli, "src/index.ts"], {
       cwd: apiCwd,
-      env: { ...process.env, PORT: String(apiPort) },
+      env: { ...process.env, PORT: String(apiPort), PLOTGO_AUTH_MODE: "dev" },
       stdio: "ignore",
     });
     await waitForApi();

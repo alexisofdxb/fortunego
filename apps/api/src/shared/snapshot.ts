@@ -47,6 +47,13 @@ import { unreadNotificationCount } from "../domains/notifications/notifications.
 import { dailyFlag } from "./daily-state";
 import { weekStartMs } from "../domains/performance/performance.service";
 import { moduleEffectsForBoard, moduleInventoryRows, moduleLoadoutSummaries, modulePartsRows, MODULE_CONFIG_VERSION, moduleEntry, pendingModuleRewards } from "../domains/modules/modules.service";
+import {
+  liveopsCampaignRows,
+  liveopsCasesView,
+  liveopsInventoryRows,
+  liveopsPassView,
+  liveopsShopView,
+} from "../domains/liveops/liveops.service";
 import { currentEmpireLevel, hasTutorialCashAccessSynergy, onboardingSnapshot, recordOnboardingMilestone } from "../domains/player/onboarding.service";
 import { empireProgress, hexBoardRows, ownedLandRows } from "../domains/land/land.service";
 import { offlineSummaryRow, presenceRow, processOfflineCatchup } from "./offline";
@@ -437,6 +444,13 @@ export async function snapshot(playerId: string, moveTxId?: string) {
       volumeMinor: metrics.volumeMinor,
       synergyCount: metrics.synergyCount,
       revenue: metrics.revenue,
+    },
+    liveops: {
+      inventory: await liveopsInventoryRows(playerId),
+      campaigns: await liveopsCampaignRows(playerId),
+      cases: await liveopsCasesView(playerId),
+      pass: await liveopsPassView(playerId),
+      shop: await liveopsShopView(playerId),
     },
   };
 }

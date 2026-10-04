@@ -32,7 +32,15 @@ import { weekStartMs } from "../performance/performance.service";
 
 export const NOTIFICATION_QUIET_HOURS = { enabled: false, startHourUtc: 22, endHourUtc: 8 } as const;
 
-export type NotificationType = "payout_ready" | "week_24h" | "week_6h" | "hunt_expiry" | "risk_alert" | "event_push";
+export type NotificationType =
+  | "payout_ready"
+  | "week_24h"
+  | "week_6h"
+  | "hunt_expiry"
+  | "risk_alert"
+  | "event_push"
+  | "liveops_milestone"
+  | "liveops_case_ready";
 
 /** Copy per spec sheet 12 "Never Say" column — no profit language, no pressure. */
 const NOTIFICATION_COPY: Record<NotificationType, (payload: Record<string, unknown>) => { title: string; body: string }> = {
@@ -45,6 +53,14 @@ const NOTIFICATION_COPY: Record<NotificationType, (payload: Record<string, unkno
   hunt_expiry: () => ({ title: "Hunt expiring soon", body: "A started Market Hunt has under 2 hours remaining." }),
   risk_alert: () => ({ title: "Critical risk level", body: "Risk entered a critical band in your district. Review exposure when you are back." }),
   event_push: (payload) => ({ title: "Major event started", body: `A scheduled global market event is now active: ${String(payload.title ?? "market event")}.` }),
+  liveops_milestone: (payload) => ({
+    title: "Campaign milestone",
+    body: `${String(payload.eventName ?? "Campaign")}: ${String(payload.label ?? "reward granted")}.`,
+  }),
+  liveops_case_ready: (payload) => ({
+    title: "Case ready",
+    body: `${String(payload.caseName ?? "A case")} can be opened from Events.`,
+  }),
 };
 
 function isUniqueViolation(error: unknown): boolean {
@@ -222,7 +238,26 @@ export async function produceHuntExpiryAlerts(now = Date.now()): Promise<void> {
   }
 }
 
-/** risk_alert:{playerId}:{day} — risk entered the critical band (>=9000 bps). */
+export async function produceLiveopsMilestone(
+  playerId: string,
+  payload: { eventId: string; eventName: string; seasonId: string; milestoneId: string; label: string },
+): Promise<void> {
+  await queueNotification(
+    playerId,
+    "liveops_milestone",
+    `liveops_milestone:${playerId}:${payload.eventId}:${payload.seasonId}:${payload.milestoneId}`,
+    payload,
+  );
+}
+
+export async function produceLiveopsCaseReady(
+  playerId: string,
+  caseName: string,
+  dedupeKey: string,
+): Promise<void> {
+  await queueNotification(playerId, "liveops_case_ready", `${playerId}:${dedupeKey}`, { caseName });
+}
+
 export async function produceRiskAlert(playerId: string, riskBps: number, now = Date.now()): Promise<void> {
   if (riskBps < 9_000) return;
   await queueNotification(playerId, "risk_alert", `risk_alert:${playerId}:${utcDayOf(now)}`, { riskBps });

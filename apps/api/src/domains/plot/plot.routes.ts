@@ -20,6 +20,7 @@ import { eventMoveLock, settlePlayer, snapshot } from "../../shared/snapshot";
 import { newId } from "../../shared/types";
 import { ownedLandRows } from "../land/land.service";
 import { awardConstruction, awardUpgrade } from "../player/empire.service";
+import { scoreAction } from "../liveops/liveops.service";
 
 export const plotRoutes = new Hono<AppEnv>();
 
@@ -89,6 +90,7 @@ plotRoutes.post("/api/plot/place", requirePlayer, async (c) => {
   const placedBoard = await loadCards(id);
   if (hasTutorialCashAccessSynergy(placedBoard)) await recordOnboardingMilestone(id, "onboarding_first_synergy", "placement.resolve");
   await recordMeaningfulAction(id, `place:${spec.id}`);
+  await scoreAction(id, "place");
   return c.json(await snapshot(id, newId()));
 });
 
@@ -163,6 +165,7 @@ plotRoutes.post("/api/plot/upgrade", requirePlayer, async (c) => {
   // v1.0: stage-upgrade XP (50/100 × building-rank multiplier).
   await awardUpgrade(id, CARDS[resolveType(card.type)]!, (card.stage + 1) as 2 | 3);
   await recordMeaningfulAction(id, `upgrade:${cardId}`);
+  await scoreAction(id, "upgrade");
   return c.json(await snapshot(id));
 });
 

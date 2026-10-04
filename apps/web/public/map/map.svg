@@ -1,195 +1,114 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1672 941" width="1672" height="941">
   <defs>
-  <symbol id="lock" viewBox="0 0 24 28">
-    <path d="M7 12 V8 a5 5 0 0 1 10 0 v4" fill="none" stroke="#c7d4e4" stroke-width="3"/>
-    <rect x="4" y="12" width="16" height="13" rx="2.5" fill="#c7d4e4"/>
-    <circle cx="12" cy="17.5" r="2" fill="#24344f"/>
-  </symbol>
     <style>
-      .hex path { fill: transparent; stroke: transparent; }
-      .hex text { display: none; }
-      .hex .lock { opacity: 0; }
-      .hex.locked .lock { opacity: 1; }
-      .hex.unlocked path { fill: #3d6b46; }
-      .hex.unlocked .lock { opacity: 0; }
-      .hex:hover path { fill: #5a4a38; }
-      .hex.unlocked:hover path { fill: #4a7f55; }
+      .hex path { fill: rgba(0,0,0,0.001); stroke: none; pointer-events: fill; }
+      .hex:hover path { fill: rgba(90, 74, 56, 0.42); stroke: #efe6d2; stroke-width: 2.5; }
     </style>
   </defs>
-    <g id="hex-1" class="hex locked" data-hex="1">
-    <path d="M765 232 L818 130 L924 130 L977 232 L924 334 L818 334 Z"/>
-    <text x="871" y="240">1</text>
-    <use class="lock" href="#lock" x="887" y="208" width="24" height="28"/>
+  <g id="hex-1" class="hex" data-hex="1">
+    <path d="M967 191 L935 242 L872 242 L840 191 L872 139 L935 139 Z"/>
   </g>
-  <g id="hex-2" class="hex locked" data-hex="2">
-    <path d="M1350 236 L1397.5 136 L1492.5 136 L1540 236 L1492.5 336 L1397.5 336 Z"/>
-    <text x="1445" y="244">2</text>
-    <use class="lock" href="#lock" x="1461" y="212" width="24" height="28"/>
+  <g id="hex-2" class="hex" data-hex="2">
+    <path d="M1534 198 L1498 250 L1425 250 L1389 198 L1425 146 L1498 146 Z"/>
   </g>
-  <g id="hex-3" class="hex locked" data-hex="3">
-    <path d="M448 277 L503 175 L613 175 L668 277 L613 379 L503 379 Z"/>
-    <text x="558" y="285">3</text>
-    <use class="lock" href="#lock" x="574" y="253" width="24" height="28"/>
+  <g id="hex-3" class="hex" data-hex="3">
+    <path d="M597 240 L562 301 L491 301 L455 240 L491 178 L562 178 Z"/>
   </g>
-  <g id="hex-4" class="hex locked" data-hex="4">
-    <path d="M644 272 L714 155 L854 155 L924 272 L854 389 L714 389 Z"/>
-    <text x="784" y="280">4</text>
-    <use class="lock" href="#lock" x="800" y="248" width="24" height="28"/>
+  <g id="hex-4" class="hex" data-hex="4">
+    <path d="M854 245 L818 304 L745 304 L709 245 L745 187 L818 187 Z"/>
   </g>
-  <g id="hex-5" class="hex locked" data-hex="5">
-    <path d="M1256 267 L1311 183 L1421 183 L1476 267 L1421 351 L1311 351 Z"/>
-    <text x="1366" y="275">5</text>
-    <use class="lock" href="#lock" x="1382" y="243" width="24" height="28"/>
+  <g id="hex-5" class="hex" data-hex="5">
+    <path d="M1405 259 L1370 322 L1299 322 L1264 259 L1299 195 L1370 195 Z"/>
   </g>
-  <g id="hex-6" class="hex locked" data-hex="6">
-    <path d="M1311 272 L1369.5 172 L1486.5 172 L1545 272 L1486.5 372 L1369.5 372 Z"/>
-    <text x="1428" y="280">6</text>
-    <use class="lock" href="#lock" x="1444" y="248" width="24" height="28"/>
+  <g id="hex-6" class="hex" data-hex="6">
+    <path d="M1537 308 L1501 363 L1427 363 L1390 308 L1427 254 L1501 254 Z"/>
   </g>
-  <g id="hex-7" class="hex locked" data-hex="7">
-    <path d="M508 336 L578 221 L718 221 L788 336 L718 451 L578 451 Z"/>
-    <text x="648" y="344">7</text>
-    <use class="lock" href="#lock" x="664" y="312" width="24" height="28"/>
+  <g id="hex-7" class="hex" data-hex="7">
+    <path d="M724 307 L687 369 L611 369 L574 307 L611 245 L687 245 Z"/>
   </g>
-  <g id="hex-8" class="hex locked" data-hex="8">
-    <path d="M764 344 L820.5 260 L933.5 260 L990 344 L933.5 428 L820.5 428 Z"/>
-    <text x="877" y="352">8</text>
-    <use class="lock" href="#lock" x="893" y="320" width="24" height="28"/>
+  <g id="hex-8" class="hex" data-hex="8">
+    <path d="M977 312 L940 375 L866 375 L830 312 L866 248 L940 248 Z"/>
   </g>
-  <g id="hex-9" class="hex locked" data-hex="9">
-    <path d="M1023 362 L1082 257 L1200 257 L1259 362 L1200 467 L1082 467 Z"/>
-    <text x="1141" y="370">9</text>
-    <use class="lock" href="#lock" x="1157" y="338" width="24" height="28"/>
+  <g id="hex-9" class="hex" data-hex="9">
+    <path d="M1237 324 L1200 385 L1126 385 L1088 324 L1126 264 L1200 264 Z"/>
   </g>
-  <g id="hex-10" class="hex locked" data-hex="10">
-    <path d="M380 375 L450 244 L590 244 L660 375 L590 506 L450 506 Z"/>
-    <text x="520" y="383">10</text>
-    <use class="lock" href="#lock" x="536" y="351" width="24" height="28"/>
+  <g id="hex-10" class="hex" data-hex="10">
+    <path d="M591 370 L554 434 L479 434 L442 370 L479 306 L554 306 Z"/>
   </g>
-  <g id="hex-11" class="hex locked" data-hex="11">
-    <path d="M611 367 L681 238 L821 238 L891 367 L821 496 L681 496 Z"/>
-    <text x="751" y="375">11</text>
-    <use class="lock" href="#lock" x="767" y="343" width="24" height="28"/>
+  <g id="hex-11" class="hex" data-hex="11">
+    <path d="M847 365 L809 427 L732 427 L693 365 L732 303 L809 303 Z"/>
   </g>
-  <g id="hex-12" class="hex locked" data-hex="12">
-    <path d="M894 412 L964 291 L1104 291 L1174 412 L1104 533 L964 533 Z"/>
-    <text x="1034" y="420">12</text>
-    <use class="lock" href="#lock" x="1050" y="388" width="24" height="28"/>
+  <g id="hex-12" class="hex" data-hex="12">
+    <path d="M1107 383 L1069 446 L993 446 L954 383 L993 320 L1069 320 Z"/>
   </g>
-  <g id="hex-13" class="hex locked" data-hex="13">
-    <path d="M1157 432 L1213.5 327 L1326.5 327 L1383 432 L1326.5 537 L1213.5 537 Z"/>
-    <text x="1270" y="440">13</text>
-    <use class="lock" href="#lock" x="1286" y="408" width="24" height="28"/>
+  <g id="hex-13" class="hex" data-hex="13">
+    <path d="M1376 393 L1337 455 L1257 455 L1217 393 L1257 331 L1337 331 Z"/>
   </g>
-  <g id="hex-14" class="hex locked" data-hex="14">
-    <path d="M502 408 L572 301 L712 301 L782 408 L712 515 L572 515 Z"/>
-    <text x="642" y="416">14</text>
-    <use class="lock" href="#lock" x="658" y="384" width="24" height="28"/>
+  <g id="hex-14" class="hex" data-hex="14">
+    <path d="M717 439 L679 504 L604 504 L566 439 L604 375 L679 375 Z"/>
   </g>
-  <g id="hex-15" class="hex locked" data-hex="15">
-    <path d="M245 470 L315 356 L455 356 L525 470 L455 584 L315 584 Z"/>
-    <text x="385" y="478">15</text>
-    <use class="lock" href="#lock" x="401" y="446" width="24" height="28"/>
+  <g id="hex-15" class="hex" data-hex="15">
+    <path d="M456 435 L417 496 L338 496 L299 435 L338 374 L417 374 Z"/>
   </g>
-  <g id="hex-16" class="hex locked" data-hex="16">
-    <path d="M827 419 L886 316 L1004 316 L1063 419 L1004 522 L886 522 Z"/>
-    <text x="945" y="427">16</text>
-    <use class="lock" href="#lock" x="961" y="395" width="24" height="28"/>
+  <g id="hex-16" class="hex" data-hex="16">
+    <path d="M980 437 L945 501 L875 501 L840 437 L875 373 L945 373 Z"/>
   </g>
-  <g id="hex-17" class="hex locked" data-hex="17">
-    <path d="M1020 437 L1090 316 L1230 316 L1300 437 L1230 558 L1090 558 Z"/>
-    <text x="1160" y="445">17</text>
-    <use class="lock" href="#lock" x="1176" y="413" width="24" height="28"/>
+  <g id="hex-17" class="hex" data-hex="17">
+    <path d="M1239 454 L1201 518 L1124 518 L1086 454 L1124 389 L1201 389 Z"/>
   </g>
-  <g id="hex-18" class="hex locked" data-hex="18">
-    <path d="M174 532 L226.5 420 L331.5 420 L384 532 L331.5 644 L226.5 644 Z"/>
-    <text x="279" y="540">18</text>
-    <use class="lock" href="#lock" x="295" y="508" width="24" height="28"/>
+  <g id="hex-18" class="hex" data-hex="18">
+    <path d="M316 494 L279 554 L204 554 L167 494 L204 433 L279 433 Z"/>
   </g>
-  <g id="hex-19" class="hex locked" data-hex="19">
-    <path d="M370 508 L440 377 L580 377 L650 508 L580 639 L440 639 Z"/>
-    <text x="510" y="516">19</text>
-    <use class="lock" href="#lock" x="526" y="484" width="24" height="28"/>
+  <g id="hex-19" class="hex" data-hex="19">
+    <path d="M587 502 L548 566 L470 566 L431 502 L470 439 L548 439 Z"/>
   </g>
-  <g id="hex-20" class="hex locked" data-hex="20">
-    <path d="M894 522 L963.5 391 L1102.5 391 L1172 522 L1102.5 653 L963.5 653 Z"/>
-    <text x="1033" y="530">20</text>
-    <use class="lock" href="#lock" x="1049" y="498" width="24" height="28"/>
+  <g id="hex-20" class="hex" data-hex="20">
+    <path d="M1107 518 L1068 585 L990 585 L951 518 L990 451 L1068 451 Z"/>
   </g>
-  <g id="hex-21" class="hex locked" data-hex="21">
-    <path d="M1159 534 L1229 403 L1369 403 L1439 534 L1369 665 L1229 665 Z"/>
-    <text x="1299" y="542">21</text>
-    <use class="lock" href="#lock" x="1315" y="510" width="24" height="28"/>
+  <g id="hex-21" class="hex" data-hex="21">
+    <path d="M1374 521 L1336 583 L1258 583 L1220 521 L1258 458 L1336 458 Z"/>
   </g>
-  <g id="hex-22" class="hex locked" data-hex="22">
-    <path d="M227 568 L297 437 L437 437 L507 568 L437 699 L297 699 Z"/>
-    <text x="367" y="576">22</text>
-    <use class="lock" href="#lock" x="383" y="544" width="24" height="28"/>
+  <g id="hex-22" class="hex" data-hex="22">
+    <path d="M448 561 L410 622 L333 622 L295 561 L333 501 L410 501 Z"/>
   </g>
-  <g id="hex-23" class="hex locked" data-hex="23">
-    <path d="M1291 569 L1347 485 L1459 485 L1515 569 L1459 653 L1347 653 Z"/>
-    <text x="1403" y="577">23</text>
-    <use class="lock" href="#lock" x="1419" y="545" width="24" height="28"/>
+  <g id="hex-23" class="hex" data-hex="23">
+    <path d="M1506 586 L1468 648 L1392 648 L1354 586 L1392 525 L1468 525 Z"/>
   </g>
-  <g id="hex-24" class="hex locked" data-hex="24">
-    <path d="M156 601 L214.5 488 L331.5 488 L390 601 L331.5 714 L214.5 714 Z"/>
-    <text x="273" y="609">24</text>
-    <use class="lock" href="#lock" x="289" y="577" width="24" height="28"/>
+  <g id="hex-24" class="hex" data-hex="24">
+    <path d="M311 620 L274 681 L199 681 L162 620 L199 559 L274 559 Z"/>
   </g>
-  <g id="hex-25" class="hex locked" data-hex="25">
-    <path d="M362 633 L431.5 502 L570.5 502 L640 633 L570.5 764 L431.5 764 Z"/>
-    <text x="501" y="641">25</text>
-    <use class="lock" href="#lock" x="517" y="609" width="24" height="28"/>
+  <g id="hex-25" class="hex" data-hex="25">
+    <path d="M580 627 L541 687 L465 687 L427 627 L465 567 L541 567 Z"/>
   </g>
-  <g id="hex-26" class="hex locked" data-hex="26">
-    <path d="M887 661 L943 530 L1055 530 L1111 661 L1055 792 L943 792 Z"/>
-    <text x="999" y="669">26</text>
-    <use class="lock" href="#lock" x="1015" y="637" width="24" height="28"/>
+  <g id="hex-26" class="hex" data-hex="26">
+    <path d="M1103 648 L1064 709 L987 709 L949 648 L987 588 L1064 588 Z"/>
   </g>
-  <g id="hex-27" class="hex locked" data-hex="27">
-    <path d="M1207 629 L1254.5 531 L1349.5 531 L1397 629 L1349.5 727 L1254.5 727 Z"/>
-    <text x="1302" y="637">27</text>
-    <use class="lock" href="#lock" x="1318" y="605" width="24" height="28"/>
+  <g id="hex-27" class="hex" data-hex="27">
+    <path d="M1374 650 L1335 712 L1258 712 L1220 650 L1258 588 L1335 588 Z"/>
   </g>
-  <g id="hex-28" class="hex locked" data-hex="28">
-    <path d="M272 664 L331.5 574 L450.5 574 L510 664 L450.5 754 L331.5 754 Z"/>
-    <text x="391" y="672">28</text>
-    <use class="lock" href="#lock" x="407" y="640" width="24" height="28"/>
+  <g id="hex-28" class="hex" data-hex="28">
+    <path d="M445 686 L406 746 L330 746 L291 686 L330 626 L406 626 Z"/>
   </g>
-  <g id="hex-29" class="hex locked" data-hex="29">
-    <path d="M498 695 L568 595 L708 595 L778 695 L708 795 L568 795 Z"/>
-    <text x="638" y="703">29</text>
-    <use class="lock" href="#lock" x="654" y="671" width="24" height="28"/>
+  <g id="hex-29" class="hex" data-hex="29">
+    <path d="M710 691 L672 754 L595 754 L557 691 L595 629 L672 629 Z"/>
   </g>
-  <g id="hex-30" class="hex locked" data-hex="30">
-    <path d="M759 707 L829 606 L969 606 L1039 707 L969 808 L829 808 Z"/>
-    <text x="899" y="715">30</text>
-    <use class="lock" href="#lock" x="915" y="683" width="24" height="28"/>
+  <g id="hex-30" class="hex" data-hex="30">
+    <path d="M967 708 L930 767 L857 767 L821 708 L857 648 L930 648 Z"/>
   </g>
-  <g id="hex-31" class="hex locked" data-hex="31">
-    <path d="M433 728 L480.5 644 L575.5 644 L623 728 L575.5 812 L480.5 812 Z"/>
-    <text x="528" y="736">31</text>
-    <use class="lock" href="#lock" x="544" y="704" width="24" height="28"/>
+  <g id="hex-31" class="hex" data-hex="31">
+    <path d="M578 751 L539 810 L462 810 L424 751 L462 691 L539 691 Z"/>
   </g>
-  <g id="hex-32" class="hex locked" data-hex="32">
-    <path d="M688 739 L741 654 L847 654 L900 739 L847 824 L741 824 Z"/>
-    <text x="794" y="747">32</text>
-    <use class="lock" href="#lock" x="810" y="715" width="24" height="28"/>
+  <g id="hex-32" class="hex" data-hex="32">
+    <path d="M841 762 L803 824 L726 824 L687 762 L726 700 L803 700 Z"/>
   </g>
-  <g id="hex-33" class="hex locked" data-hex="33">
-    <path d="M1186 796 L1233.5 712 L1328.5 712 L1376 796 L1328.5 880 L1233.5 880 Z"/>
-    <text x="1281" y="804">33</text>
-    <use class="lock" href="#lock" x="1297" y="772" width="24" height="28"/>
+  <g id="hex-33" class="hex" data-hex="33">
+    <path d="M1368 773 L1330 832 L1252 832 L1214 773 L1252 715 L1330 715 Z"/>
   </g>
-  <g id="hex-34" class="hex locked" data-hex="34">
-    <path d="M888 749 L958 644 L1098 644 L1168 749 L1098 854 L958 854 Z"/>
-    <text x="1028" y="757">34</text>
-    <use class="lock" href="#lock" x="1044" y="725" width="24" height="28"/>
+  <g id="hex-34" class="hex" data-hex="34">
+    <path d="M1100 771 L1062 830 L986 830 L947 771 L986 712 L1062 712 Z"/>
   </g>
-  <g id="hex-35" class="hex locked" data-hex="35">
-    <path d="M1014 813 L1078.5 729 L1207.5 729 L1272 813 L1207.5 897 L1078.5 897 Z"/>
-    <text x="1143" y="821">35</text>
-    <use class="lock" href="#lock" x="1159" y="789" width="24" height="28"/>
+  <g id="hex-35" class="hex" data-hex="35">
+    <path d="M1232 831 L1194 890 L1118 890 L1080 831 L1118 772 L1194 772 Z"/>
   </g>
 </svg>

@@ -12,6 +12,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model WorldRegion {
+  id        String  @id
+  q         Int
+  r         Int
+  ring      Int
+  label     String
+  ownerId   String? @unique
+  claimedAt BigInt?
+
+  @@index([ring])
+  @@map("world_regions")
+}
+
 model Player {
   id                     String   @id
   createdAt              BigInt
@@ -647,4 +660,132 @@ model PlotgoOfflineSummary {
   createdAt        BigInt
 
   @@map("plotgo_offline_summaries")
+}
+
+// LiveOps item bag (Fortune_Go_LiveOps_Events_Gacha_Packs_Design_v1.0).
+// One row per (player, item). Grants are idempotent on (player, source, sourceEventId, itemId).
+model PlayerLiveopsItem {
+  playerId   String
+  itemId     String
+  quantity   Int    @default(0)
+  updatedAt  BigInt
+
+  @@id([playerId, itemId])
+  @@index([playerId])
+  @@map("player_liveops_items")
+}
+
+model LiveopsGrantEvent {
+  grantId        String @id
+  playerId       String
+  source         String
+  sourceEventId  String
+  itemId         String
+  quantity       Int
+  createdAt      BigInt
+
+  @@unique([playerId, source, sourceEventId, itemId], name: "idx_liveops_grant_source")
+  @@index([playerId])
+  @@map("liveops_grant_events")
+}
+
+model LiveopsCampaignScore {
+  playerId     String
+  eventId      String
+  seasonId     String
+  points       Int    @default(0)
+  lastActionAt BigInt
+  dailyJson    Json   @default("{}")
+
+  @@id([playerId, eventId, seasonId])
+  @@index([playerId])
+  @@map("liveops_campaign_scores")
+}
+
+model LiveopsMilestoneClaim {
+  playerId     String
+  eventId      String
+  seasonId     String
+  milestoneId  String
+  claimedAt    BigInt
+
+  @@id([playerId, eventId, seasonId, milestoneId])
+  @@index([playerId])
+  @@map("liveops_milestone_claims")
+}
+
+model LiveopsCase {
+  id               String @id
+  playerId         String
+  caseType         String
+  sourceEventId    String
+  openedAt         BigInt
+  lootTableVersion String
+  resultJson       Json
+  pityAfter        Int    @default(0)
+
+  @@unique([playerId, caseType, sourceEventId], name: "idx_liveops_case_open")
+  @@index([playerId])
+  @@map("liveops_cases")
+}
+
+model LiveopsPity {
+  playerId    String
+  caseFamily  String
+  counter     Int    @default(0)
+  updatedAt   BigInt
+
+  @@id([playerId, caseFamily])
+  @@map("liveops_pity")
+}
+
+model LiveopsSeasonPass {
+  playerId  String
+  seasonId  String
+  xp        Int     @default(0)
+  premium   Boolean @default(false)
+  updatedAt BigInt
+
+  @@id([playerId, seasonId])
+  @@index([playerId])
+  @@map("liveops_season_pass")
+}
+
+model LiveopsPassClaim {
+  playerId  String
+  seasonId  String
+  level     Int
+  track     String
+  claimedAt BigInt
+
+  @@id([playerId, seasonId, level, track])
+  @@index([playerId])
+  @@map("liveops_pass_claims")
+}
+
+model LiveopsShopQuote {
+  id         String @id
+  playerId   String
+  sku        String
+  usdRef     Float
+  plotPrice  Int
+  refPlotUsd Float
+  expiresAt  BigInt
+  createdAt  BigInt
+
+  @@index([playerId, sku])
+  @@map("liveops_shop_quotes")
+}
+
+model LiveopsShopPurchase {
+  id        String @id
+  playerId  String
+  sku       String
+  period    String
+  plotPaid  Int    @default(0)
+  cashMinor BigInt @default(0)
+  createdAt BigInt
+
+  @@index([playerId, sku, period])
+  @@map("liveops_shop_purchases")
 }

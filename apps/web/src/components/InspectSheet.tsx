@@ -142,6 +142,7 @@ export function InspectSheet({ plot }: { plot: PlotSnapshot }) {
                     <button
                       className="claim"
                       type="button"
+                      data-tut="module-equip"
                       disabled={!compatibleInventory.length || !(equipSelection[selectKey] ?? compatibleInventory[0]?.moduleId)}
                       onClick={() =>
                         equip.mutate({
@@ -181,7 +182,7 @@ export function InspectSheet({ plot }: { plot: PlotSnapshot }) {
         {next === null ? (
           <p className="note">Max stage. Use Move to relocate the building.</p>
         ) : (
-          <button className="claim" type="button" onClick={() => upgrade.mutate({ cardId: card.id })}>
+          <button className="claim" type="button" data-tut="upgrade-btn" onClick={() => upgrade.mutate({ cardId: card.id })}>
             Upgrade to {STAGE_LABEL[(card.stage + 1) as 2 | 3]} · {cashLabel(next)}
           </button>
         )}

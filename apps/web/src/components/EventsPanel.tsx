@@ -12,6 +12,21 @@ export function EventsPanel({ plot }: { plot: PlotSnapshot }) {
     `${new Date(startsAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} – ${new Date(endsAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
   return (
     <section className="event-panel">
+      {plot.liveops?.inventory.some((item) => item.quantity > 0) ? (
+        <div className="liveops-bag" aria-label="LiveOps inventory">
+          {plot.liveops.inventory
+            .filter((item) => item.quantity > 0)
+            .map((item) => (
+              <span key={item.itemId} className="liveops-chip" title={`${item.name} · ${item.category}`}>
+                <i>{item.icon}</i>
+                <b>{item.quantity}</b>
+                <small>{item.name}</small>
+              </span>
+            ))}
+        </div>
+      ) : (
+        <small className="settled">No LiveOps materials yet — event milestones and cases will fill this bag.</small>
+      )}
       <div className="portfolio-heading">
         <b>Market Cycle · {eventState.cycle.state}</b>
         <span>

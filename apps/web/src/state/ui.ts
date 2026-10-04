@@ -11,6 +11,14 @@ interface UiState {
   questOpen: boolean;
   /** Active card drag from the hand: card type, current pointer, drag origin. */
   drag: { type: string; x: number; y: number; ox: number; oy: number } | null;
+  /** Travelled to another founder's city on the world map. */
+  visitMode: {
+    hostId: string;
+    name: string;
+    regionId: string;
+    regionLabel: string;
+    buildings: { id: string; type: string; name: string; hexId: string; stage: number; lineage: string }[];
+  } | null;
   setInspectId: (id: string | null) => void;
   setPlaceMode: (mode: { type: string } | null) => void;
   setMoveMode: (mode: { cardId: string } | null) => void;
@@ -21,6 +29,7 @@ interface UiState {
   startDrag: (type: string, ox: number, oy: number) => void;
   updateDrag: (x: number, y: number) => void;
   endDrag: () => void;
+  setVisitMode: (mode: UiState["visitMode"]) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -35,6 +44,7 @@ export const useUiStore = create<UiState>((set) => ({
     set({ drag: { type, x: ox, y: oy, ox, oy }, placeMode: { type }, moveMode: null, inspectId: null }),
   updateDrag: (x, y) => set((state) => (state.drag ? { drag: { ...state.drag, x, y } } : {})),
   endDrag: () => set({ drag: null }),
+  setVisitMode: (visitMode) => set({ visitMode, placeMode: null, moveMode: null, inspectId: null }),
   setInspectId: (inspectId) => set({ inspectId }),
   setPlaceMode: (placeMode) => set({ placeMode, moveMode: null, inspectId: null }),
   setMoveMode: (moveMode) => set({ moveMode, placeMode: null, inspectId: null }),
