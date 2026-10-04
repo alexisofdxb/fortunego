@@ -1,8 +1,8 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import {
   CARDS,
   STAGE_LABEL,
-  lineageColor,
   moduleSlotsForRuntimeStage,
   resolveType,
   stageMul,
@@ -11,7 +11,7 @@ import {
 import type { PlotSnapshot } from "@plotgo/shared";
 import { useModuleEquip, useModuleUnequip, useUpgrade } from "../api/hooks";
 import { useUiStore } from "../state/ui";
-import { cashLabel } from "../utils";
+import { cashLabel, CATEGORY_ART } from "../utils";
 
 export function InspectSheet({ plot }: { plot: PlotSnapshot }) {
   const inspectId = useUiStore((s) => s.inspectId);
@@ -42,22 +42,23 @@ export function InspectSheet({ plot }: { plot: PlotSnapshot }) {
     (module) => !moduleProfile || moduleProfile.allowedCategories.includes(module.category),
   );
   const close = () => setInspectId(null);
+  const art = CATEGORY_ART[spec.category ?? ""] ?? "🏢";
 
-  return (
-    <>
-      <div className="modal-backdrop" onClick={close} />
-      <div className="modal-card" role="dialog">
-        <button className="modal-x" type="button" onClick={close}>
+  return createPortal(
+    <aside className="hex-drawer inspect-drawer" role="dialog" aria-label={spec.name} data-tut="inspect-drawer">
+      <header className="hex-drawer-head">
+        <span className="hex-drawer-art" aria-hidden>
+          {art}
+        </span>
+        <span className="hex-drawer-coords">
+          {spec.category ?? "Building"} · {STAGE_LABEL[card.stage]}
+        </span>
+        <button type="button" className="hex-drawer-close" aria-label="Close" onClick={close}>
           ×
         </button>
-        <div className="modal-art" data-type={lineageColor(spec.lineage)}>
-          <span>{spec.name}</span>
-          <small>
-            {spec.footprint[0]}×{spec.footprint[1]} · {STAGE_LABEL[card.stage]}
-          </small>
-        </div>
-        <h2>{spec.name}</h2>
-        <p className="modal-desc">{spec.description}</p>
+      </header>
+      <h2 className="hex-drawer-title">{spec.name}</h2>
+      <p className="hex-drawer-zone">{spec.description}</p>
         <div className="modal-stats">
           <div>
             <span>Revenue model</span>
@@ -186,7 +187,7 @@ export function InspectSheet({ plot }: { plot: PlotSnapshot }) {
             Upgrade to {STAGE_LABEL[(card.stage + 1) as 2 | 3]} · {cashLabel(next)}
           </button>
         )}
-      </div>
-    </>
+    </aside>,
+    document.body,
   );
 }

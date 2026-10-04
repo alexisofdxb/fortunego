@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { CARDS } from "@plotgo/game";
 import type { PlotSnapshot } from "@plotgo/shared";
 import { useFitPreview, useMove, usePlace } from "../api/hooks";
@@ -103,6 +103,7 @@ export function HexBoard({ plot }: { plot: PlotSnapshot }) {
   const placeMode = useUiStore((s) => s.placeMode);
   const moveMode = useUiStore((s) => s.moveMode);
   const visitMode = useUiStore((s) => s.visitMode);
+  const drag = useUiStore((s) => s.drag);
   const setToast = useUiStore((s) => s.setToast);
   const setInspectId = useUiStore((s) => s.setInspectId);
   const cancelBoardModes = useUiStore((s) => s.cancelBoardModes);
@@ -132,7 +133,11 @@ export function HexBoard({ plot }: { plot: PlotSnapshot }) {
     [hexBoard.empireLevel],
   );
 
-  const fitArgs = placeMode && hoverHex ? { hexId: hoverHex, type: placeMode.type } : null;
+  const hovered = hoverHex ? hexAt.get(hoverHex) : undefined;
+  const fitArgs =
+    placeMode && hoverHex && hovered?.owned && !occupied.has(hoverHex)
+      ? { hexId: hoverHex, type: placeMode.type }
+      : null;
   useFitPreview(fitArgs);
 
   useEffect(() => {
@@ -140,10 +145,11 @@ export function HexBoard({ plot }: { plot: PlotSnapshot }) {
       if (e.key !== "Escape") return;
       cancelBoardModes();
       setDrawerHex(null);
+      setInspectId(null);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [cancelBoardModes]);
+  }, [cancelBoardModes, setInspectId]);
 
   const onHexClick = useCallback(
     (hexId: string) => {
@@ -173,13 +179,15 @@ export function HexBoard({ plot }: { plot: PlotSnapshot }) {
         cancelBoardModes();
         return;
       }
-      // A building's action sheet (upgrade / modules) opens directly; an empty
-      // parcel opens the parcel drawer (info / acquire).
+      // Occupied parcels open the inspect drawer (upgrade / modules);
+      // empty parcels open the parcel drawer (info / acquire).
       const building = occupied.get(hexId);
       if (building) {
+        setDrawerHex(null);
         setInspectId(building.id);
         return;
       }
+      setInspectId(null);
       setDrawerHex(hexId);
     },
     [hexAt, occupied, placeMode, moveMode, place, move, setToast, setInspectId, cancelBoardModes, visitMode],
@@ -187,11 +195,39 @@ export function HexBoard({ plot }: { plot: PlotSnapshot }) {
 
   const onHexEnter = useCallback(
     (hexId: string) => {
-      if (!placeMode) return;
-      const target = hexAt.get(hexId);
-      setHoverHex(target?.owned && !occupied.has(hexId) ? hexId : null);
+      if (!placeMode && !moveMode) return;
+      setHoverHex(hexId);
     },
-    [placeMode, hexAt, occupied],
+    [placeMode, moveMode],
+  );
+
+  // While a card is being dragged, paint the parcel under the pointer —
+  // locked / occupied hexes go red before the player lets go.
+  useEffect(() => {
+    if (!drag) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const r = svg.getBoundingClientRect();
+    const x = ((drag.x - r.left) / r.width) * MAP_W;
+    const y = ((drag.y - r.top) / r.height) * MAP_H;
+    setHoverHex(nearestHex(x, y));
+  }, [drag]);
+
+  useEffect(() => {
+    if (!placeMode && !moveMode && !drag) setHoverHex(null);
+  }, [placeMode, moveMode, drag]);
+
+  const onFrameMove = useCallback(
+    (e: ReactPointerEvent) => {
+      if (!placeMode && !moveMode) return;
+      const svg = svgRef.current;
+      if (!svg) return;
+      const r = svg.getBoundingClientRect();
+      const x = ((e.clientX - r.left) / r.width) * MAP_W;
+      const y = ((e.clientY - r.top) / r.height) * MAP_H;
+      setHoverHex(nearestHex(x, y));
+    },
+    [placeMode, moveMode],
   );
 
   // Clicks anywhere on the map (not only on the exact path) route to the
@@ -213,7 +249,7 @@ export function HexBoard({ plot }: { plot: PlotSnapshot }) {
   return (
     <main className="board-wrap hexboard" id="board-view" data-onboarding-target="board">
       <div className="hex-viewport" ref={viewportRef}>
-        <div className="hex-frame" onClick={onFrameClick}>
+        <div className="hex-frame" onClick={onFrameClick} onPointerMove={onFrameMove}>
           <img src={backdropSrc} alt="" draggable={false} />
           <svg ref={svgRef} viewBox={`0 0 ${MAP_W} ${MAP_H}`} preserveAspectRatio="none" onPointerLeave={() => setHoverHex(null)}>
             {HEX_GEOM.map((geom) => {
@@ -224,8 +260,11 @@ export function HexBoard({ plot }: { plot: PlotSnapshot }) {
               const classes = ["hex"];
               if (visitMode) classes.push("land-open");
               else classes.push(levelLocked(hex) ? "locked-by-level" : "land-open");
-              if (!visitMode && (placeMode || moveMode) && hex.owned && !occupied.has(hex.hexId)) {
-                classes.push(placeMode ? "hex-valid" : "hex-target");
+              const targeting = !visitMode && Boolean(placeMode || moveMode);
+              if (targeting) {
+                const droppable = hex.owned && !occupied.has(hex.hexId);
+                if (droppable) classes.push(placeMode ? "hex-valid" : "hex-target");
+                else if (hoverHex === hex.hexId) classes.push("hex-blocked");
               }
               if (drawerHex === hex.hexId) classes.push("hex-selected");
               const hasBuilding = occupied.has(hex.hexId);

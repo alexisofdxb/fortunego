@@ -33,9 +33,10 @@ import {
   type VisitReceipt,
   type VisitRequest,
 } from "@plotgo/shared";
-import { CARDS, type SessionVerb } from "@plotgo/game";
+import { CARDS, STAGE_LABEL, moduleSlotsForRuntimeStage, stageMul, type SessionVerb } from "@plotgo/game";
 import { api, getPlayerId } from "./client";
 import { useUiStore } from "../state/ui";
+import { CATEGORY_ART } from "../utils";
 
 export const PLOT_KEY = ["plot"] as const;
 export const LEADERBOARD_KEY = ["leaderboard"] as const;
@@ -147,10 +148,41 @@ export function useMove() {
 }
 
 export function useUpgrade() {
-  return usePlotMutation(
-    (body: UpgradeRequest) => api("/api/plot/upgrade", { method: "POST", body: JSON.stringify(body) }),
-    () => "Building upgraded. Empire Value moved.",
-  );
+  const queryClient = useQueryClient();
+  const setToast = useUiStore((s) => s.setToast);
+  const showCelebration = useUiStore((s) => s.showCelebration);
+  return useMutation({
+    mutationFn: (body: UpgradeRequest) =>
+      api<PlotSnapshot>("/api/plot/upgrade", { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: (data, vars) => {
+      const card = data.cards.find((c) => c.id === vars.cardId);
+      const spec = card ? CARDS[card.type] : undefined;
+      if (card && spec) {
+        const stage = card.stage as 1 | 2 | 3;
+        const prev = Math.max(1, stage - 1) as 1 | 2 | 3;
+        const prevSlots = moduleSlotsForRuntimeStage(card.type, prev);
+        const nextSlots = moduleSlotsForRuntimeStage(card.type, stage);
+        const nowDay = Math.round(spec.baseNetPerDay * stageMul(stage));
+        const wasDay = Math.round(spec.baseNetPerDay * stageMul(prev));
+        const unlocks: string[] = [`Earns $${nowDay} / day (was $${wasDay})`];
+        if (nextSlots > prevSlots) {
+          unlocks.push(`${nextSlots} module slot${nextSlots === 1 ? "" : "s"} unlocked`);
+        }
+        if (stage === 3) unlocks.push("Max rank reached");
+        showCelebration({
+          name: spec.name,
+          art: CATEGORY_ART[spec.category] ?? "🏢",
+          rank: STAGE_LABEL[stage],
+          stage,
+          unlocks,
+        });
+      } else {
+        setToast("Building upgraded.");
+      }
+      void queryClient.invalidateQueries({ queryKey: PLOT_KEY });
+    },
+    onError: (error) => setToast(error instanceof Error ? error.message : String(error)),
+  });
 }
 
 export function useOpenLiveopsCase() {

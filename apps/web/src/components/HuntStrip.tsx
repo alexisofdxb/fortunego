@@ -110,6 +110,7 @@ export function HuntStrip({ plot }: { plot: PlotSnapshot }) {
               <button
                 className="claim"
                 type="button"
+                data-tut="hunt-start"
                 title={queueFull ? "Active queue is full (max 5 started Hunts)" : ""}
                 disabled={queueFull || start.isPending}
                 onClick={() => start.mutate({ huntId: hunt.id })}

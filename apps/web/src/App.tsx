@@ -3,7 +3,9 @@ import { usePlot } from "./api/hooks";
 import { useUiStore } from "./state/ui";
 import { Header } from "./components/Header";
 import { QuestToggle, QuestTracker } from "./components/QuestTracker";
+import { NextGoal } from "./components/NextGoal";
 import { Toast } from "./components/Toast";
+import { Celebration } from "./components/Celebration";
 import { HexBoard } from "./components/HexBoard";
 import { Hand } from "./components/Hand";
 import { InspectSheet } from "./components/InspectSheet";
@@ -45,8 +47,10 @@ export default function App() {
     <div id="app">
       <Header plot={plot} />
       <QuestToggle plot={plot} />
+      <NextGoal plot={plot} />
       <QuestTracker plot={plot} />
       <Toast />
+      <Celebration />
       <HexBoard plot={plot} />
       {visitMode ? (
         <div className="visit-banner">

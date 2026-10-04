@@ -1,5 +1,13 @@
 import { create } from "zustand";
 
+export type UpgradeCelebration = {
+  name: string;
+  art: string;
+  rank: string;
+  stage: number;
+  unlocks: string[];
+};
+
 interface UiState {
   inspectId: string | null;
   /** Place mode: a Hand card is selected, waiting for a target hex click. */
@@ -7,6 +15,7 @@ interface UiState {
   /** Move mode: a placed building is being relocated to a target hex click. */
   moveMode: { cardId: string } | null;
   toast: string;
+  celebration: UpgradeCelebration | null;
   openSections: Record<string, boolean>;
   questOpen: boolean;
   /** Active card drag from the hand: card type, current pointer, drag origin. */
@@ -24,6 +33,8 @@ interface UiState {
   setMoveMode: (mode: { cardId: string } | null) => void;
   cancelBoardModes: () => void;
   setToast: (toast: string) => void;
+  showCelebration: (celebration: UpgradeCelebration) => void;
+  clearCelebration: () => void;
   toggleSection: (id: string) => void;
   setQuestOpen: (open: boolean) => void;
   startDrag: (type: string, ox: number, oy: number) => void;
@@ -37,9 +48,11 @@ export const useUiStore = create<UiState>((set) => ({
   placeMode: null,
   moveMode: null,
   toast: "",
+  celebration: null,
   openSections: {},
   questOpen: false,
   drag: null,
+  visitMode: null,
   startDrag: (type, ox, oy) =>
     set({ drag: { type, x: ox, y: oy, ox, oy }, placeMode: { type }, moveMode: null, inspectId: null }),
   updateDrag: (x, y) => set((state) => (state.drag ? { drag: { ...state.drag, x, y } } : {})),
@@ -50,6 +63,8 @@ export const useUiStore = create<UiState>((set) => ({
   setMoveMode: (moveMode) => set({ moveMode, placeMode: null, inspectId: null }),
   cancelBoardModes: () => set({ placeMode: null, moveMode: null }),
   setToast: (toast) => set({ toast }),
+  showCelebration: (celebration) => set({ celebration, toast: "" }),
+  clearCelebration: () => set({ celebration: null }),
   toggleSection: (id) =>
     set((state) => ({ openSections: { ...state.openSections, [id]: !state.openSections[id] } })),
   setQuestOpen: (open: boolean) => set({ questOpen: open }),

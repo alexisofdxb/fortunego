@@ -131,9 +131,27 @@ export function Header({ plot }: { plot: PlotSnapshot }) {
             height={36}
           />
         </div>
+        <span className="xp-hud" data-tut="xp-hud">
         <span className="level-pill">Lv {board.empireLevel}</span>
-        <span className="xp-pill" title={`${board.empireXp.toLocaleString()} XP`}>
-          {board.empireXp >= 1000 ? `${(board.empireXp / 1000).toFixed(1)}k` : board.empireXp} XP
+        <span
+          className="xp-pill"
+          title={
+            board.xpForNextLevel > 0
+              ? `${board.empireXp.toLocaleString()} / ${(board.empireXp + board.xpForNextLevel).toLocaleString()} XP · ${board.xpForNextLevel.toLocaleString()} to Lv ${board.empireLevel + 1}`
+              : `${board.empireXp.toLocaleString()} XP · max level`
+          }
+        >
+          {board.xpForNextLevel > 0 ? (
+            <>
+              <span className="xp-mini">
+                <i style={{ width: `${xpPct}%` }} />
+              </span>
+              {board.xpForNextLevel.toLocaleString()} to Lv {board.empireLevel + 1}
+            </>
+          ) : (
+            "Max"
+          )}
+        </span>
         </span>
       </div>
       <div className="customer-bar" aria-label="Customers">

@@ -1,4 +1,4 @@
-import { buildingUnlockLevel } from "@plotgo/game";
+import { buildingUnlockLevel, XP_SOURCE_BASE } from "@plotgo/game";
 import type { PlotSnapshot } from "@plotgo/shared";
 import { useOnboardingSkip } from "../api/hooks";
 import { cashLabel } from "../utils";
@@ -40,6 +40,52 @@ export function QuestTracker({ plot }: { plot: PlotSnapshot }) {
           ×
         </button>
       </header>
+
+      {plot.hexBoard.xpForNextLevel > 0 ? (
+        <section className="quest-section">
+          <h3>Reach Lv {plot.hexBoard.empireLevel + 1}</h3>
+          <ul>
+            <li>
+              <i />
+              <span>
+                {plot.hexBoard.xpForNextLevel.toLocaleString()} XP to go
+                <em>
+                  {plot.hexBoard.empireXp.toLocaleString()} /{" "}
+                  {(plot.hexBoard.empireXp + plot.hexBoard.xpForNextLevel).toLocaleString()}
+                </em>
+              </span>
+            </li>
+            <li>
+              <i />
+              <span>
+                Market Hunt
+                <em>+{XP_SOURCE_BASE.hunt} XP</em>
+              </span>
+            </li>
+            <li>
+              <i />
+              <span>
+                Daily objective
+                <em>+{XP_SOURCE_BASE.dailyObjective} XP</em>
+              </span>
+            </li>
+            <li>
+              <i />
+              <span>
+                Place a business
+                <em>+{XP_SOURCE_BASE.construction} XP</em>
+              </span>
+            </li>
+            <li>
+              <i />
+              <span>
+                Upgrade a building
+                <em>+{XP_SOURCE_BASE.stage2Upgrade}–{XP_SOURCE_BASE.stage3Upgrade} XP</em>
+              </span>
+            </li>
+          </ul>
+        </section>
+      ) : null}
 
       {onboarding ? (
         <section className="quest-section">

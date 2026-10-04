@@ -53,7 +53,7 @@ function huntTicketNote(plot: PlotSnapshot): string {
 function huntBanner(plot: PlotSnapshot): { title: string; sub: string } {
   const all = plot.hunts ?? (plot.hunt ? [plot.hunt] : []);
   const ready = all.find((hunt) => hunt.started && hunt.ready && !hunt.claimed);
-  if (ready) return { title: ready.title, sub: "Claim your reward" };
+  if (ready) return { title: ready.title, sub: "Claim your reward · +20 XP" };
   const active = all.find((hunt) => hunt.started && !hunt.claimed);
   if (active) {
     return {
@@ -63,15 +63,15 @@ function huntBanner(plot: PlotSnapshot): { title: string; sub: string } {
   }
   const offers = plot.huntOffers ?? all.filter((hunt) => !hunt.started);
   const tickets = huntTicketNote(plot);
-  if (offers.length === 1) return { title: offers[0]!.title, sub: `Offer ready — tap to start${tickets}` };
-  if (offers.length > 1) return { title: "Market Hunt", sub: `${offers.length} offers ready${tickets}` };
+  if (offers.length === 1) return { title: offers[0]!.title, sub: `Offer ready — tap to start · +20 XP${tickets}` };
+  if (offers.length > 1) return { title: "Market Hunt", sub: `${offers.length} offers ready · +20 XP${tickets}` };
   if (tickets) return { title: "Market Hunt", sub: `${huntTicketCount(plot)} hunt ticket${huntTicketCount(plot) === 1 ? "" : "s"} in the bag` };
   return { title: "Market Hunt", sub: "No hunts right now" };
 }
 
 function objectiveBanner(plot: PlotSnapshot): { title: string; sub: string } {
   const lane = plot.objectives?.lanes.find((item) => item.status !== "complete");
-  if (lane) return { title: lane.title, sub: "Complete now!" };
+  if (lane) return { title: lane.title, sub: "Complete now · +25 XP" };
   return { title: "Objectives", sub: "All complete today" };
 }
 
@@ -194,6 +194,7 @@ export function Dock({ plot }: { plot: PlotSnapshot }) {
             <button
               type="button"
               className={`hud-banner-wrap${isOpen("hunts") ? " active" : ""}`}
+              data-tut="hunt-banner"
               aria-label={huntsItem.label}
               aria-expanded={isOpen("hunts")}
               onClick={() => open("hunts")}
@@ -213,6 +214,7 @@ export function Dock({ plot }: { plot: PlotSnapshot }) {
             <button
               type="button"
               className={`hud-banner-wrap${isOpen("objectives") ? " active" : ""}`}
+              data-tut="objectives-banner"
               aria-label={objectivesItem.label}
               aria-expanded={isOpen("objectives")}
               onClick={() => open("objectives")}
