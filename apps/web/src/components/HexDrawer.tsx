@@ -1,8 +1,10 @@
+import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { CARDS, STAGE_LABEL, resolveType, stageMul } from "@plotgo/game";
 import type { HexBoard as HexBoardDto, PlotSnapshot } from "@plotgo/shared";
 import { cashLabel, CATEGORY_ART, GRADE_CLASS } from "../utils";
 import { useAcquireLand, useLandView } from "../api/hooks";
+import { audio } from "../audio";
 
 type BoardHex = HexBoardDto["hexes"][number];
 
@@ -48,6 +50,10 @@ export function HexDrawer({ plot, hexId, onClose }: { plot: PlotSnapshot; hexId:
   const hex: BoardHex | undefined = board.hexes.find((h) => h.hexId === hexId);
   const land = useLandView();
   const acquire = useAcquireLand();
+  useEffect(() => {
+    audio.play("parcel_open");
+    return () => audio.play("drawer_close");
+  }, [hexId]);
   if (!hex) return null;
 
   const attrs = (land.data?.hexes.find((h) => h.hexId === hexId)?.attributes ?? null) as Record<string, number> | null;
@@ -124,7 +130,6 @@ export function HexDrawer({ plot, hexId, onClose }: { plot: PlotSnapshot; hexId:
   const levelMet = hex.requiredLevel <= board.empireLevel;
   const owned = hex.owned;
   const priceLabel = hex.priceMinor <= 0 ? "Free deed" : `${cashLabel(hex.priceMinor)} Cash`;
-
   let action: { label: string; disabled: boolean; run?: () => void };
   if (owned) action = { label: `Owned · ${METHOD_LABEL[hex.acquisitionMethod ?? ""] ?? "Acquired"}`, disabled: true };
   else if (!levelMet) action = { label: `🔒 Requires Empire Level ${hex.requiredLevel}`, disabled: true };
@@ -198,7 +203,9 @@ export function HexDrawer({ plot, hexId, onClose }: { plot: PlotSnapshot; hexId:
       <button type="button" className="hex-drawer-buy" disabled={action.disabled} onClick={action.run}>
         {action.label}
       </button>
-      {!owned && levelMet && !hex.frontier ? <p className="hex-drawer-hint">Expand from a parcel you own to reach this land.</p> : null}
+      {!owned && !levelMet ? (
+        <p className="hex-drawer-hint">Reach Empire Level {hex.requiredLevel} to claim this parcel.</p>
+      ) : null}
     </aside>,
     document.body,
   );

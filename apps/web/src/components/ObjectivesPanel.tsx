@@ -3,6 +3,7 @@ import type { PlotSnapshot } from "@plotgo/shared";
 import { useObjectiveReroll } from "../api/hooks";
 import { useUiStore } from "../state/ui";
 import { cashLabel } from "../utils";
+import { audio } from "../audio";
 
 const LANE_LABEL: Record<string, string> = { operations: "Operations", growth: "Growth", market: "Market" };
 
@@ -22,6 +23,7 @@ export function ObjectivesPanel({ plot }: { plot: PlotSnapshot }) {
       const key = `${objectives?.day}:${lane.lane}:${lane.templateId}`;
       if (lane.status === "complete" && !toastedRef.current.has(key)) {
         toastedRef.current.add(key);
+        audio.play("objective_done");
         setToast(`Objective complete — ${lane.title}: ${cashLabel(lane.rewardMinor)} Cash paid.`);
       }
     }

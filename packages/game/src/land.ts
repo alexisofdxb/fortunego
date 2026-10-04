@@ -9,7 +9,6 @@ import hexBalance from "./v02/hex_balance.json";
 import landPrices from "./v02/land_prices.json";
 import affinities from "./v02/affinities.json";
 import assumptions from "./v02/assumptions.json";
-import { hexNeighbors } from "./hex.ts";
 import { maxHexesForLevel } from "./progression.ts";
 
 export type HexGrade = "Entry" | "Growth" | "Premium" | "Prime" | "Trophy";
@@ -167,16 +166,23 @@ export const LAND_ACQUISITION_ORDER: readonly string[] = Object.freeze(PRICE_BY_
 /** Hex id of the order-1 starter parcel (D05). The first acquisition must be this hex. */
 export const STARTER_HEX_ID: string = String(PRICE_BY_ORDER[0]!.mapLabel);
 
-/** Unowned hexes adjacent (hexNeighbors) to any owned hex. */
-export function frontierHexIds(ownedIds: Iterable<string>): string[] {
+/**
+ * Unowned hexes the player may claim at `level`. After the starter grant,
+ * requiredLevel (and capacity, checked in canAcquire) is the lock — the
+ * painted map does not force a hop through a higher-level parcel to reach
+ * a deed you already qualify for (e.g. D03 at Lv 3 vs C08 at Lv 4).
+ */
+export function frontierHexIds(ownedIds: Iterable<string>, level = 1): string[] {
   const owned = new Set([...ownedIds].map(String));
-  const frontier = new Set<string>();
-  for (const id of owned) {
-    for (const neighbor of hexNeighbors(id)) {
-      if (!owned.has(neighbor)) frontier.add(neighbor);
-    }
+  if (owned.size === 0) return [];
+  const frontier: string[] = [];
+  for (const attr of BALANCE_ROWS) {
+    if (owned.has(attr.hexId)) continue;
+    const price = PRICE_BY_PARCEL.get(attr.parcelId);
+    const required = Math.max(price?.requiredLevel ?? 1, attr.rareRequiredLevel);
+    if (level >= required) frontier.push(attr.hexId);
   }
-  return [...frontier].sort((a, b) => Number(a) - Number(b));
+  return frontier.sort((a, b) => Number(a) - Number(b));
 }
 
 export type AcquireCheck = { ok: boolean; reason: string | null };
@@ -187,8 +193,9 @@ export type AcquireCheck = { ok: boolean; reason: string | null };
  *  - level: max(landPrice.requiredLevel, hexBalance rareRequiredLevel) ≤ level
  *  - starter: the very first acquisition (ownedCount === 0) must be the
  *    order-1 starter parcel (D05)
- *  - frontier: the hex must be adjacent to an owned hex (any frontier hex the
- *    player can afford whose requiredLevel ≤ level; order not forced)
+ *  - after the starter grant, any parcel whose requiredLevel is met is
+ *    claimable (capacity still applies). Adjacency is not required: the
+ *    painted district puts same-ring deeds on opposite sides of the map.
  */
 export function canAcquire(level: number, ownedCount: number, ownedIds: Iterable<string>, hexId: string): AcquireCheck {
   const attr = hexAttribute(hexId);
@@ -202,6 +209,5 @@ export function canAcquire(level: number, ownedCount: number, ownedIds: Iterable
       ? { ok: true, reason: null }
       : { ok: false, reason: "starter_parcel" };
   }
-  if (!frontierHexIds(ownedIds).includes(String(hexId))) return { ok: false, reason: "frontier" };
   return { ok: true, reason: null };
 }

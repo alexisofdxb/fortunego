@@ -1556,16 +1556,9 @@ The iframe should remain fast on mobile.
 
 # 41. Audio
 
-Optional lightweight sound design:
+Canonical spec: `docs/PLOT_Sound_System_v1.0.md`.
 
-- card placement click,
-- Cash collection,
-- upgrade sound,
-- stock discovery sound,
-- weekly payout reward,
-- market event alert.
-
-Audio should feel premium and restrained.
+Premium, restrained district audio: looping bed, short stingers (upgrade, close day, hunt claim, level up), board and UI SFX. Web Audio mixer in `apps/web`. Economy stays silent on the server.
 
 ---
 

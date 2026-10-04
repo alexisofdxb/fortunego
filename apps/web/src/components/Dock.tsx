@@ -29,6 +29,7 @@ import { InboxList } from "./NotificationBell";
 import { CatalogOverlay } from "./Catalog";
 import { EventsOverlay } from "./EventsOverlay";
 import { WorldOverlay } from "./WorldOverlay";
+import { audio } from "../audio";
 
 type DockItem = {
   id: string;
@@ -178,7 +179,12 @@ export function Dock({ plot }: { plot: PlotSnapshot }) {
   const byId = new Map(items.map((item) => [item.id, item]));
   const active = items.find((item) => openSections[`dock-${item.id}`]) ?? null;
   const isOpen = (id: string) => !!openSections[`dock-${id}`];
-  const open = (id: string) => toggle(`dock-${id}`);
+  const open = (id: string) => {
+    const willOpen = !openSections[`dock-${id}`];
+    audio.play("ui_tap");
+    audio.play(willOpen ? "drawer_open" : "drawer_close");
+    toggle(`dock-${id}`);
+  };
 
   const huntsItem = byId.get("hunts");
   const objectivesItem = byId.get("objectives");

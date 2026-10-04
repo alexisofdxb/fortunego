@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { PlotSnapshot } from "@plotgo/shared";
 import { useUiStore } from "../state/ui";
+import { audio } from "../audio";
 
 /**
  * Forced first-time tutorial (strategy-genre FTUE): a spotlight mask dims
@@ -229,7 +230,7 @@ const STEPS: Step[] = [
       (p.objectives?.lanes.some((l) => l.status === "complete") ?? false),
   },
   {
-    text: "That's the loop: **hunt → objectives → upgrade → expand**. A **Reach Lv 3** card will stay on the left after this — follow it whenever you're stuck. Keep going until the header says Lv 3.",
+    text: "That's the loop: **hunt → objectives → upgrade → expand**. Sound is on — tap the **speaker** in the header any time. Keep doing hunts and daily objectives until the header says Lv 3.",
     cta: "Keep going",
     done: () => false,
   },
@@ -297,6 +298,7 @@ export function Tutorial({ plot }: { plot: PlotSnapshot }) {
   plotRef.current = plot;
 
   const running = !finished;
+  const prevStep = useRef(step);
 
   const current = STEPS[Math.min(step, STEPS.length - 1)];
   const isLast = step >= STEPS.length - 1;
@@ -304,6 +306,8 @@ export function Tutorial({ plot }: { plot: PlotSnapshot }) {
   useEffect(() => {
     if (!running) return;
     localStorage.setItem(tutStepKey(plot.playerId), JSON.stringify({ v: TUTORIAL_VERSION, step }));
+    if (prevStep.current !== step) audio.play("tut_advance");
+    prevStep.current = step;
   }, [running, step, plot.playerId]);
 
   // Re-open inspect when resuming an upgrade/equip step after a reload.

@@ -167,7 +167,7 @@ async function runAcceptance(): Promise<void> {
     && (apiTrophy.price as JsonObject).cost === 247_800, "API trophy row diverged");
 
   // --- 4. Frontier flags on the fresh board match the game's frontier set. -
-  const expectedFrontier = new Set(frontierHexIds([STARTER_HEX_ID]));
+  const expectedFrontier = new Set(frontierHexIds([STARTER_HEX_ID], 1));
   for (const row of apiHexes) {
     const isStarter = row.hexId === STARTER_HEX_ID;
     assert(row.owned === isStarter, `owned flag mismatch on ${row.hexId}`);

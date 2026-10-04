@@ -257,7 +257,7 @@ export async function snapshot(playerId: string, moveTxId?: string) {
     completedPromotions: p.promotions,
   });
   const hexBoard = {
-    hexes: hexBoardRows(landRows),
+    hexes: hexBoardRows(landRows, progressionLevel),
     ownedCount: landRows.length,
     capacityForLevel: maxHexesForLevel(progressionLevel),
     candidateLevel: progressionEval.candidateLevel,

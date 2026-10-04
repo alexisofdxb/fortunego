@@ -86,7 +86,7 @@ function priceForHex(hexId: string) {
 /** Full land board for the acquisition UI, in canonical acquisition order. */
 export function landView(playerLevel: number, rows: PlotgoLand[]): LandView {
   const owned = new Map(rows.map((row) => [row.hexId, row]));
-  const frontier = new Set(frontierHexIds(rows.map((row) => row.hexId)));
+  const frontier = new Set(frontierHexIds(rows.map((row) => row.hexId), playerLevel));
   const positions = new Map(HEXES.map((hex) => [hex.id, hex]));
   const hexes: LandHexView[] = LAND_ACQUISITION_ORDER.map((parcelId) => {
     const hexId = hexForParcel(parcelId) ?? "";
@@ -118,9 +118,9 @@ export function landView(playerLevel: number, rows: PlotgoLand[]): LandView {
  * Snapshot hex-board rows (v2): flat price fields, no attribute blob. Ordered
  * by the layout for stable rendering (cx/cy carry the geometry).
  */
-export function hexBoardRows(rows: PlotgoLand[]) {
+export function hexBoardRows(rows: PlotgoLand[], playerLevel: number) {
   const owned = new Map(rows.map((row) => [row.hexId, row]));
-  const frontier = new Set(frontierHexIds(rows.map((row) => row.hexId)));
+  const frontier = new Set(frontierHexIds(rows.map((row) => row.hexId), playerLevel));
   return HEXES.map((hex) => {
     const attr = hexAttribute(hex.id);
     const parcelId = parcelForHex(hex.id) ?? null;

@@ -3,6 +3,7 @@ import type { PlotSnapshot } from "@plotgo/shared";
 import { useOnboardingSkip } from "../api/hooks";
 import { cashLabel } from "../utils";
 import { useUiStore } from "../state/ui";
+import { audio } from "../audio";
 
 /**
  * Compact quest tracker (right-side floating panel): onboarding quest, daily
@@ -209,7 +210,11 @@ export function QuestToggle({ plot }: { plot: PlotSnapshot }) {
       type="button"
       className={`quest-toggle${open ? " active" : ""}`}
       title="Quests"
-      onClick={() => setQuestOpen(!open)}
+      onClick={() => {
+        audio.play("ui_tap");
+        audio.play(open ? "drawer_close" : "drawer_open");
+        setQuestOpen(!open);
+      }}
     >
       📜
       {pending > 0 ? <span className="quest-count">{pending}</span> : null}

@@ -5,6 +5,7 @@ import { useFitPreview, useMove, usePlace } from "../api/hooks";
 import { useUiStore } from "../state/ui";
 import { CATEGORY_ART } from "../utils";
 import { HexDrawer } from "./HexDrawer";
+import { audio } from "../audio";
 import { VisitCityDrawer } from "./VisitCityDrawer";
 import hexLayout from "../../public/map/hexes.json";
 
@@ -112,6 +113,7 @@ export function HexBoard({ plot }: { plot: PlotSnapshot }) {
 
   const [drawerHex, setDrawerHex] = useState<string | null>(null);
   const [hoverHex, setHoverHex] = useState<string | null>(null);
+  const prevHover = useRef<string | null>(null);
 
   const hexBoard = plot.hexBoard;
   const cityCards = useMemo(
@@ -160,21 +162,21 @@ export function HexBoard({ plot }: { plot: PlotSnapshot }) {
         return;
       }
       if (placeMode) {
-        if (!hex.owned) {
-          setToast("Acquire this parcel first");
+        if (!hex.owned || occupied.has(hexId)) {
+          audio.play("hex_locked");
+          if (!hex.owned) setToast("Acquire this parcel first");
           return;
         }
-        if (occupied.has(hexId)) return;
         place.mutate({ hexId, type: placeMode.type });
         cancelBoardModes();
         return;
       }
       if (moveMode) {
-        if (!hex.owned) {
-          setToast("Acquire this parcel first");
+        if (!hex.owned || occupied.has(hexId)) {
+          audio.play("hex_locked");
+          if (!hex.owned) setToast("Acquire this parcel first");
           return;
         }
-        if (occupied.has(hexId)) return;
         move.mutate({ cardId: moveMode.cardId, hexId });
         cancelBoardModes();
         return;
@@ -216,6 +218,20 @@ export function HexBoard({ plot }: { plot: PlotSnapshot }) {
   useEffect(() => {
     if (!placeMode && !moveMode && !drag) setHoverHex(null);
   }, [placeMode, moveMode, drag]);
+
+  useEffect(() => {
+    if (!placeMode && !moveMode && !drag) {
+      prevHover.current = hoverHex;
+      return;
+    }
+    if (hoverHex === prevHover.current) return;
+    prevHover.current = hoverHex;
+    if (!hoverHex) return;
+    audio.play("card_drag_tick");
+    const hex = hexAt.get(hoverHex);
+    const droppable = Boolean(hex?.owned && !occupied.has(hoverHex));
+    audio.play(droppable ? "hex_valid" : "hex_locked");
+  }, [hoverHex, placeMode, moveMode, drag, hexAt, occupied]);
 
   const onFrameMove = useCallback(
     (e: ReactPointerEvent) => {

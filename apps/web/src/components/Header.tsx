@@ -5,6 +5,7 @@ import type { PlotSnapshot } from "@plotgo/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePrivy } from "@privy-io/react-auth";
 import { NotificationBell } from "./NotificationBell";
+import { Speaker, audio } from "../audio";
 import { useSessionSettle } from "../api/hooks";
 import { useUiStore } from "../state/ui";
 import { CATEGORY_ART, dicebearAvatarUrl } from "../utils";
@@ -92,6 +93,8 @@ export function Header({ plot }: { plot: PlotSnapshot }) {
   // Toast once per empire-level gain that grew land capacity.
   useEffect(() => {
     const prev = prevRef.current;
+    if (board.empireLevel > prev.level) audio.play("level_up");
+    else if (board.capacityForLevel > prev.capacity) audio.play("capacity_up");
     if (board.empireLevel > prev.level && board.capacityForLevel > prev.capacity) {
       setToast("Land Capacity Increased — you may acquire another parcel");
     }
@@ -235,6 +238,7 @@ export function Header({ plot }: { plot: PlotSnapshot }) {
           <i>🏛️</i>
           <b>{plot.empireValue}</b>
         </span>
+        <Speaker />
         <NotificationBell unread={plot.notificationsUnread} />
         {PRIVY_ENABLED ? <LogoutButton /> : null}
       </div>

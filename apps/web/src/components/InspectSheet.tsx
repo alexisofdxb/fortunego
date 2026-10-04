@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   CARDS,
@@ -12,6 +12,7 @@ import type { PlotSnapshot } from "@plotgo/shared";
 import { useModuleEquip, useModuleUnequip, useUpgrade } from "../api/hooks";
 import { useUiStore } from "../state/ui";
 import { cashLabel, CATEGORY_ART } from "../utils";
+import { audio } from "../audio";
 
 export function InspectSheet({ plot }: { plot: PlotSnapshot }) {
   const inspectId = useUiStore((s) => s.inspectId);
@@ -21,6 +22,12 @@ export function InspectSheet({ plot }: { plot: PlotSnapshot }) {
   const equip = useModuleEquip(inspectId ?? "");
   const unequip = useModuleUnequip(inspectId ?? "");
   const [equipSelection, setEquipSelection] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!inspectId) return;
+    audio.play("inspect_open");
+    return () => audio.play("inspect_close");
+  }, [inspectId]);
 
   if (!inspectId) return null;
   const card = plot.cards.find((c) => c.id === inspectId);

@@ -3,7 +3,6 @@ import { usePlot } from "./api/hooks";
 import { useUiStore } from "./state/ui";
 import { Header } from "./components/Header";
 import { QuestToggle, QuestTracker } from "./components/QuestTracker";
-import { NextGoal } from "./components/NextGoal";
 import { Toast } from "./components/Toast";
 import { Celebration } from "./components/Celebration";
 import { HexBoard } from "./components/HexBoard";
@@ -13,6 +12,7 @@ import { Dock } from "./components/Dock";
 import { DragLayer } from "./components/DragLayer";
 import { Tutorial } from "./components/Tutorial";
 import { CARDS } from "@plotgo/game";
+import { AudioRoot } from "./audio";
 
 export default function App() {
   // Keep UI scale fixed while playing: block the Ctrl+wheel zoom gesture app-wide.
@@ -45,9 +45,9 @@ export default function App() {
 
   return (
     <div id="app">
+      <AudioRoot plot={plot} />
       <Header plot={plot} />
       <QuestToggle plot={plot} />
-      <NextGoal plot={plot} />
       <QuestTracker plot={plot} />
       <Toast />
       <Celebration />

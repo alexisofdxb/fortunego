@@ -230,7 +230,7 @@ for (let order = 1; order <= 6; order++) {
 }
 assert(landPrice(LAND_ACQUISITION_ORDER[0]!)!.method === "Starter Grant", "order 1 must be the starter grant");
 assert(STARTER_HEX_ID === "35", `starter hex must be 35 (parcel D05), got ${STARTER_HEX_ID}`);
-const starterFrontier = frontierHexIds([STARTER_HEX_ID]);
+const starterFrontier = frontierHexIds([STARTER_HEX_ID], 2);
 assert(starterFrontier.length > 0, "the starter parcel must expose a non-empty frontier");
 // canAcquire cases: fresh level-1 starter OK; trophy level-gated; capacity-gated at maxHexes.
 assert(canAcquire(1, 0, [], STARTER_HEX_ID).ok, "a fresh level-1 player must acquire the starter parcel");

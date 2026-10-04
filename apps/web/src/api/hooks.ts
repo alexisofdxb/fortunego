@@ -36,6 +36,7 @@ import {
 import { CARDS, STAGE_LABEL, moduleSlotsForRuntimeStage, stageMul, type SessionVerb } from "@plotgo/game";
 import { api, getPlayerId } from "./client";
 import { useUiStore } from "../state/ui";
+import { audio } from "../audio";
 import { CATEGORY_ART } from "../utils";
 
 export const PLOT_KEY = ["plot"] as const;
@@ -55,7 +56,10 @@ function usePlotMutation<TVars, TData = PlotSnapshot>(
       if (toastOnSuccess) setToast(toastOnSuccess(data, vars));
       void queryClient.invalidateQueries({ queryKey: PLOT_KEY });
     },
-    onError: (error) => setToast(error instanceof Error ? error.message : String(error)),
+    onError: (error) => {
+      audio.play("error");
+      setToast(error instanceof Error ? error.message : String(error));
+    },
   });
 }
 
@@ -92,10 +96,20 @@ export function useSessionStart() {
 }
 
 export function usePlace() {
-  return usePlotMutation(
-    (body: PlaceRequest) => api("/api/plot/place", { method: "POST", body: JSON.stringify(body) }),
-    (_data, vars) => `${CARDS[vars.type].name} placed. Run today's action to settle activity.`,
-  );
+  const queryClient = useQueryClient();
+  const setToast = useUiStore((s) => s.setToast);
+  return useMutation({
+    mutationFn: (body: PlaceRequest) => api("/api/plot/place", { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: (data, vars) => {
+      audio.play("place");
+      setToast(`${CARDS[vars.type].name} placed. Run today's action to settle activity.`);
+      void queryClient.invalidateQueries({ queryKey: PLOT_KEY });
+    },
+    onError: (error) => {
+      audio.play("error");
+      setToast(error instanceof Error ? error.message : String(error));
+    },
+  });
 }
 
 /** POST /api/land/acquire — claim a frontier parcel (starter grant, deed or cash purchase). */
@@ -118,10 +132,14 @@ export function useAcquireLand() {
         return parsed.data;
       }),
     onSuccess: () => {
+      audio.play("acquire");
       setToast("Parcel acquired");
       void queryClient.invalidateQueries({ queryKey: PLOT_KEY });
     },
-    onError: (error) => setToast(error instanceof Error ? error.message : String(error)),
+    onError: (error) => {
+      audio.play("error");
+      setToast(error instanceof Error ? error.message : String(error));
+    },
   });
 }
 
@@ -176,12 +194,16 @@ export function useUpgrade() {
           stage,
           unlocks,
         });
+        audio.play(stage === 3 ? "upgrade_tower" : "upgrade_regional");
       } else {
         setToast("Building upgraded.");
       }
       void queryClient.invalidateQueries({ queryKey: PLOT_KEY });
     },
-    onError: (error) => setToast(error instanceof Error ? error.message : String(error)),
+    onError: (error) => {
+      audio.play("error");
+      setToast(error instanceof Error ? error.message : String(error));
+    },
   });
 }
 
@@ -239,18 +261,40 @@ export function useLiveopsLeaderboard(eventId: string | null) {
 }
 
 export function useHuntClaim() {
-  return usePlotMutation(
-    (body: HuntClaimRequest) => api<PlotSnapshot & { dropped?: string | null }>("/api/hunt/claim", { method: "POST", body: JSON.stringify(body) }),
-    (data) => (data.dropped ? `You found ${data.dropped} stock units.` : "Hunt completed; reward pool fallback applied."),
-  );
+  const queryClient = useQueryClient();
+  const setToast = useUiStore((s) => s.setToast);
+  return useMutation({
+    mutationFn: (body: HuntClaimRequest) =>
+      api<PlotSnapshot & { dropped?: string | null }>("/api/hunt/claim", { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: (data) => {
+      audio.play("hunt_claim");
+      setToast(data.dropped ? `You found ${data.dropped} stock units.` : "Hunt completed; reward pool fallback applied.");
+      void queryClient.invalidateQueries({ queryKey: PLOT_KEY });
+    },
+    onError: (error) => {
+      audio.play("error");
+      setToast(error instanceof Error ? error.message : String(error));
+    },
+  });
 }
 
 /** POST /api/hunts/start — start an unstarted daily offer; the offer keeps its own real-time expiry. */
 export function useHuntStart() {
-  return usePlotMutation(
-    (body: HuntStartRequest) => api<PlotSnapshot & { started?: string }>("/api/hunts/start", { method: "POST", body: JSON.stringify(body) }),
-    () => "Hunt started — progress only counts while you play actively.",
-  );
+  const queryClient = useQueryClient();
+  const setToast = useUiStore((s) => s.setToast);
+  return useMutation({
+    mutationFn: (body: HuntStartRequest) =>
+      api<PlotSnapshot & { started?: string }>("/api/hunts/start", { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: () => {
+      audio.play("hunt_start");
+      setToast("Hunt started — progress only counts while you play actively.");
+      void queryClient.invalidateQueries({ queryKey: PLOT_KEY });
+    },
+    onError: (error) => {
+      audio.play("error");
+      setToast(error instanceof Error ? error.message : String(error));
+    },
+  });
 }
 
 /** POST /api/hunts/reroll — free daily reroll (1/day); replaces one unstarted offer. */
@@ -270,11 +314,21 @@ export function useObjectiveReroll() {
 }
 
 export function useModuleEquip(buildingId: string) {
-  return usePlotMutation(
-    (body: ModuleEquipRequest) =>
+  const queryClient = useQueryClient();
+  const setToast = useUiStore((s) => s.setToast);
+  return useMutation({
+    mutationFn: (body: ModuleEquipRequest) =>
       api(`/api/buildings/${buildingId}/modules/equip`, { method: "POST", body: JSON.stringify(body) }),
-    () => "Module equipped at the next settlement boundary.",
-  );
+    onSuccess: () => {
+      audio.play("module_equip");
+      setToast("Module equipped at the next settlement boundary.");
+      void queryClient.invalidateQueries({ queryKey: PLOT_KEY });
+    },
+    onError: (error) => {
+      audio.play("error");
+      setToast(error instanceof Error ? error.message : String(error));
+    },
+  });
 }
 
 export function useModuleUnequip(buildingId: string) {
@@ -307,10 +361,24 @@ export function useEventMissionClaim() {
 }
 
 export function useSessionSettle() {
-  return usePlotMutation(
-    (body: SessionSettleRequest) => api<PlotSnapshot & { receipt?: { cashDeltaMinor: number } }>("/api/session/settle", { method: "POST", body: JSON.stringify(body) }),
-    (data) => (data.receipt && data.receipt.cashDeltaMinor < 0 ? "District day settled with a loss." : "District day settled."),
-  );
+  const queryClient = useQueryClient();
+  const setToast = useUiStore((s) => s.setToast);
+  return useMutation({
+    mutationFn: (body: SessionSettleRequest) =>
+      api<PlotSnapshot & { receipt?: { cashDeltaMinor: number } }>("/api/session/settle", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (data) => {
+      audio.play("close_day");
+      setToast(data.receipt && data.receipt.cashDeltaMinor < 0 ? "District day settled with a loss." : "District day settled.");
+      void queryClient.invalidateQueries({ queryKey: PLOT_KEY });
+    },
+    onError: (error) => {
+      audio.play("error");
+      setToast(error instanceof Error ? error.message : String(error));
+    },
+  });
 }
 
 export function useRebalance() {

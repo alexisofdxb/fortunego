@@ -6,6 +6,7 @@ import { usePlace } from "../api/hooks";
 import { useUiStore } from "../state/ui";
 import { cashLabel, hexIdFromEl, nearestHexFromPoint } from "../utils";
 import { tutorialRunning } from "./Tutorial";
+import { audio } from "../audio";
 
 type CatalogCard = PlotSnapshot["catalog"][number];
 
@@ -35,6 +36,7 @@ function beginCardDrag(
   const onMove = (ev: PointerEvent) => {
     if (!started && Math.hypot(ev.clientX - startX, ev.clientY - startY) > DRAG_THRESHOLD) {
       started = true;
+      audio.play("card_pickup");
       useUiStore.getState().startDrag(type, ox, oy);
     }
     if (started) useUiStore.getState().updateDrag(ev.clientX, ev.clientY);
@@ -58,8 +60,9 @@ function beginCardDrag(
     if (free) {
       placeMutate({ hexId: hex.hexId, type });
       state.setToast("");
-    } else if (hex && !hex.owned) {
-      state.setToast("Acquire this parcel first");
+    } else if (hex) {
+      audio.play("hex_locked");
+      if (!hex.owned) state.setToast("Acquire this parcel first");
     }
     state.cancelBoardModes();
   };
